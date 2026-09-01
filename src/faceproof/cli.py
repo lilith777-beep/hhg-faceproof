@@ -59,7 +59,9 @@ def _pipeline(
 ) -> DiscoveryPipeline:
     return DiscoveryPipeline(
         settings=settings,
-        face_engine=FaceEngine(settings.model_dir),
+        face_engine=FaceEngine(
+            settings.model_dir, detection_threshold=settings.detection_threshold
+        ),
         candidate_source=_source(settings, instance=instance, tag=tag),
         image_fetcher=SafeImageFetcher(
             timeout_s=settings.request_timeout_s,
@@ -191,7 +193,11 @@ def calibrate_threshold(
     """Measure a threshold from consented positive and representative negative faces."""
     settings = _settings()
     report = calibrate(
-        FaceEngine(settings.model_dir), reference, positives, negatives, output.resolve()
+        FaceEngine(settings.model_dir, detection_threshold=settings.detection_threshold),
+        reference,
+        positives,
+        negatives,
+        output.resolve(),
     )
     metrics = report["metrics"]
     console.print(

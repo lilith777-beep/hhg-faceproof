@@ -123,6 +123,11 @@ content, face score, geometric inlier ratio, and perceptual distance—in that o
 uncorroborated faces are closer than the configured margin, the output is marked ambiguous and the
 blockchain write is blocked.
 
+Face detection/encoding uses the decoded source image. AKAZE geometric corroboration is separately
+bounded to a 512-pixel working edge: the placeholder pair retained 35+ RANSAC inliers at a 0.44+
+ratio while reducing the warm benchmark from about 3.0 seconds to 0.23 seconds on the development
+machine. Cold CLI startup remains hardware-dependent and is reported in evidence timings.
+
 `FACEPROOF_FACE_THRESHOLD=0.50` is a conservative project starting point above the upstream SFace
 demo's 0.363 threshold, **not a universal accuracy guarantee**. Before the final recording,
 calibrate it on consented same-person images spanning
@@ -138,6 +143,12 @@ Use at least two other consenting images of the subject and five representative 
 The generated report contains only filenames, hashes, scores, measured error rates, and the
 recommended balanced-accuracy threshold—not embeddings or image bytes. Keep the calibration images
 outside Git.
+
+YuNet detection uses `FACEPROOF_DETECTION_THRESHOLD=0.80`. The upstream demo commonly uses 0.90,
+but the placeholder acceptance set exposed false rejections at 0.90 (positive confidences 0.866 and
+0.872). At 0.80 both positives were detected while the SFace verifier still separated the
+same-person pair (0.936) from the different-person pair (0.404). Re-check this gate on real,
+consented validation images before submission.
 
 ## Evidence and blockchain semantics
 

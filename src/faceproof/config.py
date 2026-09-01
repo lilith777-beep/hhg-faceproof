@@ -22,6 +22,7 @@ class Settings:
     expected_signer: str | None
     expected_chain_id: int
     explorer_tx_url: str
+    detection_threshold: float
     face_threshold: float
     face_threshold_source: str
     prefilter_face_threshold: float
@@ -43,6 +44,10 @@ class Settings:
         threshold = float(threshold_text or "0.50")
         if not 0.0 < threshold < 1.0:
             raise ValueError("FACEPROOF_FACE_THRESHOLD must be between 0 and 1")
+
+        detection_threshold = float(os.getenv("FACEPROOF_DETECTION_THRESHOLD", "0.80"))
+        if not 0.5 <= detection_threshold < 1.0:
+            raise ValueError("FACEPROOF_DETECTION_THRESHOLD must be between 0.5 and 1")
 
         max_candidates = int(os.getenv("FACEPROOF_MAX_CANDIDATES", "200"))
         if not 1 <= max_candidates <= 1000:
@@ -89,6 +94,7 @@ class Settings:
                 "FACEPROOF_EXPLORER_TX_URL",
                 "",
             ),
+            detection_threshold=detection_threshold,
             face_threshold=threshold,
             face_threshold_source=(
                 "FACEPROOF_FACE_THRESHOLD"

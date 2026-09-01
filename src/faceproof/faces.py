@@ -78,7 +78,7 @@ class FaceEngine:
     detector_id = "opencv-yunet-2023mar"
     encoder_id = "opencv-sface-2021dec"
 
-    def __init__(self, model_dir: Path, *, detection_threshold: float = 0.90) -> None:
+    def __init__(self, model_dir: Path, *, detection_threshold: float = 0.80) -> None:
         try:
             import cv2
         except ImportError as exc:  # pragma: no cover - dependency error is environment-specific

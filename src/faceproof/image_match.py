@@ -24,7 +24,7 @@ def hash_distance(left: int, right: int) -> int:
     return (left ^ right).bit_count()
 
 
-def _bounded_gray(image: Any, cv2: Any, max_dimension: int = 1200) -> Any:
+def _bounded_gray(image: Any, cv2: Any, max_dimension: int = 512) -> Any:
     height, width = image.shape[:2]
     scale = min(1.0, max_dimension / max(height, width))
     if scale < 1.0:

@@ -75,14 +75,25 @@ class DiscoveryPipeline:
         preview_started = perf_counter()
         preview_rows, failures = self._download(hits, preview=True)
         shortlist: list[tuple[SearchHit, RemoteImage, float, int]] = []
+        preview_cache: dict[str, tuple[Any, list[Any], float, int, Any, Any]] = {}
         for hit, preview in preview_rows:
             try:
                 preview_image = self.face_engine.decode(preview.content)
                 preview_faces = self.face_engine.detect_and_encode(preview_image)
-                similarity, _, _ = self.face_engine.best_match(query_face, preview_faces)
+                similarity, matched_index, matched_box = self.face_engine.best_match(
+                    query_face, preview_faces
+                )
                 phash_distance = hash_distance(
                     query_phash,
                     perceptual_hash(preview_image, self.face_engine.cv2),
+                )
+                preview_cache[hit.media_id] = (
+                    preview_image,
+                    preview_faces,
+                    similarity,
+                    phash_distance,
+                    matched_index,
+                    matched_box,
                 )
                 if (
                     similarity >= self.settings.prefilter_face_threshold
@@ -92,6 +103,15 @@ class DiscoveryPipeline:
             except FaceInputError as exc:
                 failures.append(self._failure(hit.preview_url, "preview_decode", exc))
 
+        # If the API says preview and original are the same URL, a below-threshold
+        # preview cannot improve at the full stage. Drop it instead of re-decoding it.
+        shortlist = [
+            row
+            for row in shortlist
+            if not (
+                row[0].image_url == row[0].preview_url and row[2] < self.settings.face_threshold
+            )
+        ]
         shortlist.sort(key=lambda row: (-row[2], row[3], row[0].post_id))
         shortlist = shortlist[: self.settings.max_finalists]
         preview_ms = (perf_counter() - preview_started) * 1000
@@ -113,18 +133,29 @@ class DiscoveryPipeline:
         for hit in finalist_hits:
             remote = full_by_media.get(hit.media_id) or preview_by_media[hit.media_id]
             try:
-                candidate_image = self.face_engine.decode(remote.content)
-                candidate_faces = self.face_engine.detect_and_encode(candidate_image)
-                similarity, matched_index, matched_box = self.face_engine.best_match(
-                    query_face, candidate_faces
-                )
+                cached = preview_cache.get(hit.media_id)
+                if hit.image_url == hit.preview_url and cached is not None:
+                    (
+                        candidate_image,
+                        candidate_faces,
+                        similarity,
+                        phash_distance,
+                        matched_index,
+                        matched_box,
+                    ) = cached
+                else:
+                    candidate_image = self.face_engine.decode(remote.content)
+                    candidate_faces = self.face_engine.detect_and_encode(candidate_image)
+                    similarity, matched_index, matched_box = self.face_engine.best_match(
+                        query_face, candidate_faces
+                    )
+                    phash_distance = hash_distance(
+                        query_phash,
+                        perceptual_hash(candidate_image, self.face_engine.cv2),
+                    )
                 if similarity < self.settings.face_threshold:
                     continue
                 candidate_sha256 = hashlib.sha256(remote.content).hexdigest()
-                phash_distance = hash_distance(
-                    query_phash,
-                    perceptual_hash(candidate_image, self.face_engine.cv2),
-                )
                 features = geometric_match(query_image, candidate_image, self.face_engine.cv2)
                 exact_image = candidate_sha256 == query_sha256
                 same_content = (
@@ -268,6 +299,7 @@ class DiscoveryPipeline:
                 "face_count": 1,
                 "face_box": asdict(query_face.box),
                 "detector": self.face_engine.detector_id,
+                "detector_confidence_threshold": self.settings.detection_threshold,
                 "encoder": self.face_engine.encoder_id,
                 "embedding_persisted": False,
             },

@@ -9,6 +9,7 @@ def _clear(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in (
         "FACEPROOF_CHAIN_ID",
         "FACEPROOF_FACE_THRESHOLD",
+        "FACEPROOF_DETECTION_THRESHOLD",
         "FACEPROOF_PREFILTER_FACE_THRESHOLD",
         "FACEPROOF_MAX_CANDIDATES",
         "FACEPROOF_MAX_FINALISTS",
@@ -26,6 +27,7 @@ def test_defaults_to_local_anvil(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     assert settings.rpc_url == "http://127.0.0.1:8545"
     assert settings.signer_mode == "unlocked"
     assert settings.face_threshold == 0.5
+    assert settings.detection_threshold == 0.8
     assert settings.face_threshold_source.startswith("conservative project default")
 
 

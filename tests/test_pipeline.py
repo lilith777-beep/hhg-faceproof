@@ -90,6 +90,7 @@ def _settings(tmp_path: Path) -> Settings:
         expected_signer=None,
         expected_chain_id=31_337,
         explorer_tx_url="",
+        detection_threshold=0.8,
         face_threshold=0.5,
         face_threshold_source="test calibration",
         prefilter_face_threshold=0.3,
@@ -165,7 +166,7 @@ def test_pipeline_requires_explicit_consent(tmp_path: Path) -> None:
 def test_pipeline_rejects_face_mismatch(tmp_path: Path) -> None:
     image = tmp_path / "query.jpg"
     image.write_bytes(b"query-image")
-    with pytest.raises(NoVerifiedMatch, match="re-verification"):
+    with pytest.raises(NoVerifiedMatch, match="preview face/image filter"):
         _pipeline(tmp_path, FakeSource([_hit("different.jpg")])).discover(
             image, consent_asserted=True
         )

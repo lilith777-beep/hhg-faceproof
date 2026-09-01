@@ -53,6 +53,7 @@ def _settings(tmp_path: Path) -> Settings:
         expected_signer=None,
         expected_chain_id=11_155_111,
         explorer_tx_url="https://example/tx/{tx_hash}",
+        detection_threshold=0.8,
         face_threshold=0.5,
         face_threshold_source="test",
         prefilter_face_threshold=0.3,
