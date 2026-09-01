@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/BlueBlaze6335/faceproof/schema/evidence-v1.schema.json",
+  "title": "FaceProof evidence bundle v1",
+  "type": "object",
+  "required": ["schema", "created_at", "run_id", "consent", "query", "search", "match", "claims"],
+  "properties": {
+    "schema": { "const": "faceproof.evidence.v1" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "run_id": { "type": "string", "pattern": "^fp-" },
+    "consent": {
+      "type": "object",
+      "required": ["asserted_by_operator", "scope", "identity_inference_performed"],
+      "properties": {
+        "asserted_by_operator": { "const": true },
+        "scope": { "type": "string" },
+        "identity_inference_performed": { "const": false }
+      }
+    },
+    "query": {
+      "type": "object",
+      "required": ["image_sha256", "face_count", "detector", "encoder", "embedding_persisted"],
+      "properties": {
+        "image_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "face_count": { "const": 1 },
+        "embedding_persisted": { "const": false }
+      }
+    },
+    "search": {
+      "type": "object",
+      "required": ["provider", "live_query", "scope", "endpoint", "provider_fetched_at", "statuses_scanned", "media_discovered"],
+      "properties": {
+        "provider": { "const": "mastodon-public-api" },
+        "live_query": { "const": true },
+        "endpoint": { "type": "string", "format": "uri" },
+        "provider_fetched_at": { "type": "string", "format": "date-time" },
+        "statuses_scanned": { "type": "integer", "minimum": 0 },
+        "media_discovered": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "match": {
+      "type": "object",
+      "required": ["post_url", "canonical_uri", "post_id", "media_id", "candidate_image_sha256", "face_similarity", "face_threshold", "same_content", "ambiguous", "human_confirmation_required"],
+      "properties": {
+        "post_url": { "type": "string", "format": "uri" },
+        "canonical_uri": { "type": "string", "format": "uri" },
+        "candidate_image_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "face_similarity": { "type": "number", "minimum": -1, "maximum": 1 },
+        "face_threshold": { "type": "number", "minimum": 0, "maximum": 1 },
+        "same_content": { "type": "boolean" },
+        "ambiguous": { "type": "boolean" },
+        "human_confirmation_required": { "const": true }
+      }
+    },
+    "claims": { "type": "object" }
+  },
+  "additionalProperties": false
+}
