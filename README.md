@@ -24,9 +24,10 @@ uses a reproducible scoped search instead: the public/hashtag timeline of an ope
 open-source Mastodon instance. The API is queried live during every run, and returned post/media
 identifiers, timestamps, endpoint, counts, and fetch time are preserved as provenance.
 
-For the recording, publish a consenting image with a unique hashtag such as
-`#HHGoaFaceProofNeel2026`, wait until the instance returns it, and configure that tag. This is a
-genuine live search, not a hardcoded result, while remaining lawful, free, bounded, and repeatable.
+For the recording, publish a consenting image under a shared hashtag containing several unrelated
+image posts (for example the event's public tag), wait until the instance returns it, and configure
+that tag. The matcher must choose the target from multiple live candidates. A unique tag is useful
+only for connector diagnosis; do not use a one-result tag as the final search demonstration.
 
 ## Requirement mapping
 
@@ -69,11 +70,12 @@ Set a unique tag in `.env`:
 
 ```dotenv
 FACEPROOF_MASTODON_INSTANCE=https://mastodon.social
-FACEPROOF_MASTODON_TAG=HHGoaFaceProofNeel2026
+FACEPROOF_MASTODON_TAG=HHGoa2026
 ```
 
-Post the consenting reference/near-reference image publicly with that hashtag. Then prove the live
-connector sees current social data before running biometrics:
+Post the consenting reference/near-reference image publicly with that shared hashtag. Ensure the
+timeline contains multiple image posts, then prove the connector sees current social data before
+running biometrics:
 
 ```powershell
 faceproof source probe
@@ -175,7 +177,7 @@ gate.
 
 Before recording:
 
-- [ ] Use a unique live hashtag and show `faceproof source probe` discovering it.
+- [ ] Use a shared live hashtag with multiple image posts and show `source probe` scanning them.
 - [ ] Use a sharp, well-lit, single-face scan with explicit consent.
 - [ ] Confirm the returned post manually and ensure `ambiguous` is `False`.
 - [ ] Show the evidence component signals, not only a face score.
