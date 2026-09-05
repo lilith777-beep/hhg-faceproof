@@ -23,7 +23,8 @@ class ModelSpec:
 YUNET = ModelSpec(
     filename="face_detection_yunet_2023mar.onnx",
     url=(
-        "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/"
+        "https://raw.githubusercontent.com/opencv/opencv_zoo/"
+        "47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_detection_yunet/"
         "face_detection_yunet_2023mar.onnx"
     ),
     sha256="8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
@@ -31,7 +32,8 @@ YUNET = ModelSpec(
 SFACE = ModelSpec(
     filename="face_recognition_sface_2021dec.onnx",
     url=(
-        "https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/"
+        "https://raw.githubusercontent.com/opencv/opencv_zoo/"
+        "47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_recognition_sface/"
         "face_recognition_sface_2021dec.onnx"
     ),
     sha256="0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
@@ -129,9 +131,11 @@ class FaceEngine:
             aligned = self.recognizer.alignCrop(image, face)
             raw_feature = self.recognizer.feature(aligned).reshape(-1).astype(np.float32)
             norm = float(np.linalg.norm(raw_feature))
-            if norm <= 0:
+            if norm <= 0 or not np.all(np.isfinite(raw_feature)):
                 continue
             embedding = raw_feature / norm
+            if embedding.shape != (128,) or not np.all(np.isfinite(embedding)):
+                continue
             x, y, box_width, box_height = (round(float(value)) for value in face[:4])
             observations.append(
                 FaceObservation(
@@ -143,6 +147,9 @@ class FaceEngine:
                         confidence=float(face[-1]),
                     ),
                     embedding=embedding,
+                    landmarks=tuple(
+                        (float(face[offset]), float(face[offset + 1])) for offset in range(4, 14, 2)
+                    ),
                 )
             )
         return observations
@@ -156,6 +163,21 @@ class FaceEngine:
                 f"expected exactly one query face, found {len(faces)}; crop the intended face first"
             )
         face = faces[0]
+        self._require_query_quality(image, face)
+        return face
+
+    def select_query_face(self, image: Any, face_index: int | None = None) -> FaceObservation:
+        faces = self.detect_and_encode(image)
+        if not faces:
+            raise FaceInputError("no face detected in the input image")
+        if len(faces) > 1 and face_index is None:
+            raise FaceInputError(
+                f"found {len(faces)} faces; explicitly select an enrollment face index"
+            )
+        selected = 0 if face_index is None else face_index
+        if selected < 0 or selected >= len(faces):
+            raise FaceInputError(f"enrollment face index {selected} is out of range")
+        face = faces[selected]
         self._require_query_quality(image, face)
         return face
 

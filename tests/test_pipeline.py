@@ -11,7 +11,7 @@ import pytest
 from jsonschema import Draft202012Validator, FormatChecker
 
 from faceproof.config import Settings
-from faceproof.errors import ConsentRequired, NoVerifiedMatch
+from faceproof.errors import ConsentRequired
 from faceproof.models import (
     BoundingBox,
     FaceObservation,
@@ -20,6 +20,7 @@ from faceproof.models import (
     SearchHit,
 )
 from faceproof.pipeline import DiscoveryPipeline
+from faceproof.policy import DecisionPolicy
 from faceproof.remote import RemoteImage
 
 
@@ -67,7 +68,7 @@ class FakeCopyEngine:
 
     @staticmethod
     def _descriptor(image: bytes) -> np.ndarray:
-        if image in {b"query-image", b"matching-image"}:
+        if image in {b"query-image", b"matching-image", b"no-face"}:
             return np.array([1.0, 0.0], dtype=np.float32)
         return np.array([0.0, 1.0], dtype=np.float32)
 
@@ -96,8 +97,18 @@ class FakeSource:
 
 class FakeFetcher:
     def fetch(self, url: str) -> RemoteImage:
-        content = b"matching-image" if "match" in url else b"different-image"
+        if "no-face" in url:
+            content = b"no-face"
+        else:
+            content = b"matching-image" if "match" in url else b"different-image"
         return RemoteImage(url, content, "image/jpeg")
+
+
+class PreviewFailureFetcher(FakeFetcher):
+    def fetch(self, url: str) -> RemoteImage:
+        if "preview-broken" in url:
+            raise OSError("preview unavailable")
+        return RemoteImage(url, b"matching-image", "image/jpeg")
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -167,6 +178,7 @@ def _pipeline(
         candidate_source=source,
         image_fetcher=FakeFetcher(),
         copy_engine=copy_engine,
+        policy=DecisionPolicy.synthetic(face_threshold=0.5, copy_threshold=0.5),
     )
 
 
@@ -174,19 +186,21 @@ def test_pipeline_writes_minimal_verifiable_evidence(tmp_path: Path) -> None:
     image = tmp_path / "query.jpg"
     image.write_bytes(b"query-image")
     source = FakeSource([_hit()])
-    bundle, output = _pipeline(tmp_path, source).discover(image, consent_asserted=True)
+    bundle, output = _pipeline(tmp_path, source).discover(
+        image, copy_reference_paths=[image], consent_asserted=True
+    )
     stored = json.loads(output.read_text(encoding="utf-8"))
 
     assert source.calls == 1
     assert stored == bundle.to_dict()
     assert stored["match"]["post_url"].endswith("/123")
     assert stored["match"]["face_similarity"] == 1.0
-    assert stored["match"]["same_content"] is True
-    assert stored["match"]["threshold_source"] == "test calibration"
+    assert stored["match"]["same_content"] is False
+    assert stored["match"]["threshold_source"] == "synthetic-test-policy"
     assert stored["query"]["embedding_persisted"] is False
     assert "embedding" not in stored["query"]
     schema = json.loads(
-        (Path(__file__).parents[1] / "schema" / "evidence-v1.schema.json").read_text(
+        (Path(__file__).parents[1] / "schema" / "evidence-v2.schema.json").read_text(
             encoding="utf-8"
         )
     )
@@ -199,7 +213,9 @@ def test_evidence_hashes_full_post_text_while_bounding_excerpt(tmp_path: Path) -
     full_text = "a" * 2100 + "tamper-sensitive-tail"
     source = FakeSource([replace(_hit(), content_text=full_text)])
 
-    bundle, _ = _pipeline(tmp_path, source).discover(image, consent_asserted=True)
+    bundle, _ = _pipeline(tmp_path, source).discover(
+        image, copy_reference_paths=[image], consent_asserted=True
+    )
 
     assert len(bundle.match["post_text"]) == 2000
     assert bundle.match["post_text_truncated"] is True
@@ -210,23 +226,27 @@ def test_pipeline_requires_explicit_consent(tmp_path: Path) -> None:
     image = tmp_path / "query.jpg"
     image.write_bytes(b"query-image")
     with pytest.raises(ConsentRequired):
-        _pipeline(tmp_path, FakeSource([_hit()])).discover(image, consent_asserted=False)
+        _pipeline(tmp_path, FakeSource([_hit()])).discover(
+            image, copy_reference_paths=[image], consent_asserted=False
+        )
 
 
 def test_pipeline_rejects_face_mismatch(tmp_path: Path) -> None:
     image = tmp_path / "query.jpg"
     image.write_bytes(b"query-image")
-    with pytest.raises(NoVerifiedMatch, match="preview face/image filter"):
-        _pipeline(tmp_path, FakeSource([_hit("different.jpg")])).discover(
-            image, consent_asserted=True
-        )
+    bundle, _ = _pipeline(tmp_path, FakeSource([_hit("different.jpg")])).discover(
+        image, copy_reference_paths=[image], consent_asserted=True
+    )
+    assert bundle.match["decision"] == "no_accepted_match"
 
 
 def test_pipeline_marks_close_face_candidates_ambiguous(tmp_path: Path) -> None:
     image = tmp_path / "query.jpg"
     image.write_bytes(b"query-image")
     source = FakeSource([_hit(post_id="1"), _hit(post_id="2")])
-    bundle, _ = _pipeline(tmp_path, source).discover(image, consent_asserted=True)
+    bundle, _ = _pipeline(tmp_path, source).discover(
+        image, copy_reference_paths=[image], consent_asserted=True
+    )
     # Same-content corroboration is strong enough that identical reposts are not ambiguous.
     assert bundle.match["ambiguous"] is False
     assert bundle.match["verified_match_count"] == 2
@@ -240,11 +260,11 @@ def test_dual_faiss_retrieval_and_decision_are_evidenced(tmp_path: Path) -> None
         tmp_path,
         source,
         copy_engine=FakeCopyEngine(),
-    ).discover(image, consent_asserted=True)
+    ).discover(image, copy_reference_paths=[image], consent_asserted=True)
 
     assert bundle.search["vector_backend"] == "faiss.IndexFlatIP"
     assert bundle.query["copy_descriptor"]["enabled"] is True
-    assert bundle.match["decision"] == "same_identity_and_content"
+    assert bundle.match["decision"] == "both_supported_pending_human_confirmation"
     assert bundle.match["face_match"] is True
     assert bundle.match["sscd_match"] is True
     assert bundle.match["sscd_similarity"] == 1.0
@@ -252,20 +272,32 @@ def test_dual_faiss_retrieval_and_decision_are_evidenced(tmp_path: Path) -> None
     assert bundle.match["copy_retrieval_rank"] == 1
 
 
-@pytest.mark.parametrize(
-    ("face_match", "copy_match", "expected"),
-    [
-        (True, True, "same_identity_and_content"),
-        (True, False, "same_identity_different_content"),
-        (False, True, "copy_face_conflict"),
-        (False, False, "rejected"),
-    ],
-)
-def test_decision_matrix(face_match: bool, copy_match: bool, expected: str) -> None:
-    assert (
-        DiscoveryPipeline._decision(
-            face_match=face_match,
-            copy_match=copy_match,
-        )
-        == expected
+def test_copy_evidence_survives_unassessable_face(tmp_path: Path) -> None:
+    image = tmp_path / "query.jpg"
+    image.write_bytes(b"query-image")
+    bundle, _ = _pipeline(
+        tmp_path,
+        FakeSource([_hit("no-face.jpg")]),
+        copy_engine=FakeCopyEngine(),
+    ).discover(image, copy_reference_paths=[image], consent_asserted=True)
+    assert bundle.match["face_state"] == "UNASSESSABLE"
+    assert bundle.match["copy_state"] == "SUPPORTED"
+    assert bundle.match["decision"] == "copy_only_identity_unknown"
+
+
+def test_exhaustive_mode_recovers_original_after_preview_failure(tmp_path: Path) -> None:
+    image = tmp_path / "query.jpg"
+    image.write_bytes(b"query-image")
+    hit = replace(
+        _hit(),
+        image_url="https://social.example/media/match-full.jpg",
+        preview_url="https://social.example/media/preview-broken.jpg",
     )
+    pipeline = _pipeline(tmp_path, FakeSource([hit]), copy_engine=FakeCopyEngine())
+    pipeline.image_fetcher = PreviewFailureFetcher()
+    bundle, _ = pipeline.discover(
+        image, copy_reference_paths=[image], consent_asserted=True
+    )
+    assert bundle.match["post_id"] == "123"
+    assert "full-resolution-recovery" in bundle.match["retrieval_channels"]
+    assert bundle.search["failures"][0]["media_id"] == hit.media_id

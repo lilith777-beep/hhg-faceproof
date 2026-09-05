@@ -19,9 +19,10 @@ from .config import Settings
 from .copydetect import load_sscd_engine
 from .errors import ChainError, VerificationError
 from .faces import FaceEngine
-from .integrity import write_json
+from .integrity import finalize_evidence, read_json, write_json
 from .models import SearchBatch, SearchHit
 from .pipeline import DiscoveryPipeline
+from .policy import DecisionPolicy
 from .remote import RemoteImage
 
 
@@ -114,8 +115,13 @@ def run_placeholder_acceptance(settings: Settings) -> dict[str, Any]:
         candidate_source=_FixtureSource(),
         image_fetcher=_FixtureFetcher(fixture_dir),
         copy_engine=copy_engine,
+        policy=DecisionPolicy.synthetic(
+            face_threshold=settings.face_threshold,
+            copy_threshold=settings.sscd_threshold,
+        ),
     ).discover(
         fixture_dir / "query.png",
+        copy_reference_paths=[fixture_dir / "query.png"],
         consent_asserted=True,
         output_path=evidence_path,
     )
@@ -172,14 +178,20 @@ def _rpc_is_local(settings: Settings) -> bool:
 
 
 @contextmanager
-def ensure_acceptance_chain(settings: Settings) -> Iterator[EthereumAnchor]:
+def ensure_acceptance_chain(
+    settings: Settings, *, state_path: Path | None = None
+) -> Iterator[EthereumAnchor]:
     try:
         existing = EthereumAnchor(settings)
     except ChainError:
         existing = None
-    if existing is not None:
+    if existing is not None and state_path is None:
         yield existing
         return
+    if existing is not None:
+        raise ChainError(
+            "a local RPC is already running; stop it before the isolated persistence test"
+        )
 
     if not _rpc_is_local(settings):
         raise ChainError("configured non-local RPC is unreachable; refusing to start a local chain")
@@ -197,6 +209,17 @@ def ensure_acceptance_chain(settings: Settings) -> Iterator[EthereumAnchor]:
         "--port",
         str(urlsplit(settings.rpc_url or "").port or 8545),
     ]
+    if state_path is not None:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        command.extend(
+            [
+                "--state",
+                str(state_path),
+                "--state-interval",
+                "1",
+                "--preserve-historical-states",
+            ]
+        )
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     process = subprocess.Popen(
         command,
@@ -219,6 +242,13 @@ def ensure_acceptance_chain(settings: Settings) -> Iterator[EthereumAnchor]:
             raise ChainError("local Anvil did not become ready within 10 seconds")
         yield anchor
     finally:
+        if state_path is not None:
+            deadline = time.monotonic() + 2.5
+            while (
+                (not state_path.is_file() or state_path.stat().st_size == 0)
+                and time.monotonic() < deadline
+            ):
+                time.sleep(0.1)
         process.terminate()
         try:
             process.wait(timeout=5)
@@ -229,12 +259,22 @@ def ensure_acceptance_chain(settings: Settings) -> Iterator[EthereumAnchor]:
 
 def run_chain_acceptance(settings: Settings, evidence_path: Path) -> dict[str, Any]:
     output_dir = evidence_path.parent
+    final_path = output_dir / "evidence.final.json"
+    finalize_evidence(
+        evidence_path,
+        final_path,
+        reviewer="synthetic-acceptance-runner",
+        confirmed_claims=list(read_json(evidence_path)["claims"]["reviewable_claims"]),
+    )
     anchor_path = output_dir / "anchor.json"
     tampered_path = output_dir / "evidence-tampered.json"
-    with ensure_acceptance_chain(settings) as chain:
-        receipt = chain.anchor(evidence_path, anchor_path)
-        report = chain.verify(evidence_path, anchor_path)
-        tampered = copy.deepcopy(json.loads(evidence_path.read_text("utf-8")))
+    state_path = output_dir / "anvil-state.json"
+    state_path.unlink(missing_ok=True)
+    (settings.artifact_dir / "chain" / "deployment.json").unlink(missing_ok=True)
+    with ensure_acceptance_chain(settings, state_path=state_path) as chain:
+        receipt = chain.anchor(final_path, anchor_path)
+        report = chain.verify(final_path, anchor_path)
+        tampered = copy.deepcopy(json.loads(final_path.read_text("utf-8")))
         tampered["match"]["author_handle"] = "tampered-fixture"
         write_json(tampered_path, tampered)
         tamper_rejected = False
@@ -244,11 +284,17 @@ def run_chain_acceptance(settings: Settings, evidence_path: Path) -> dict[str, A
             tamper_rejected = True
         if not tamper_rejected:
             raise AssertionError("tampered evidence unexpectedly passed blockchain verification")
-        return {
-            "transaction_hash": receipt.transaction_hash,
-            "block_number": report.block_number,
-            "confirmations": report.confirmations,
-            "verification_checks": report.checks,
-            "tamper_rejected": tamper_rejected,
-            "anchor_path": anchor_path,
-        }
+    if not state_path.is_file():
+        raise AssertionError("Anvil did not persist its chain state")
+    with ensure_acceptance_chain(settings, state_path=state_path) as restored:
+        restored_report = restored.verify(final_path, anchor_path)
+    return {
+        "status": "LOCAL_PERSISTENCE_VERIFIED",
+        "transaction_hash": receipt.transaction_hash,
+        "block_number": report.block_number,
+        "confirmations": restored_report.confirmations,
+        "verification_checks": restored_report.checks,
+        "tamper_rejected": tamper_rejected,
+        "anchor_path": anchor_path,
+        "state_path": state_path,
+    }

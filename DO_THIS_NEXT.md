@@ -1,33 +1,48 @@
-# Do this next
+# Do this next — one small box at a time
 
-The code path is consolidated. These are the remaining human-data gates. Do one box at a time.
+The software path is ready. These are human/data gates; do not do them all at once.
 
-## 1. Put the photos in folders
+## Step 1 — permissions
 
-- [ ] Put one clear, single-face photo at `demo-input/real/query.jpg`.
-- [ ] Put varied consenting same-person photos in `calibration/positive/` (pose, light, crop,
-      compression, expression, and appropriate occlusion).
-- [ ] Put representative consenting different-person and look-alike hard-negative photos in
-      `calibration/negative/`.
-- [ ] Keep a separate `copy-calibration/positive/` set of transformed copies of the exact query
-      and `copy-calibration/negative/` set of unrelated images. Do not mix these labels with the
-      face-identity folders.
+- [ ] Make one private consent-reference document per participant.
+- [ ] Confirm it permits **both enrollment and candidate biometric matching** where applicable.
+- [ ] Give each document an opaque ID (do not commit the document).
 
-Stop here. Tell Codex: **photos ready**.
+Stop. Take a break.
 
-## 2. Make one public Mastodon post
+## Step 2 — photos and split manifest
 
-- [ ] Post the query or same-person image publicly.
-- [ ] Add a shared hashtag with multiple image posts, such as the current event hashtag.
-- [ ] Open the post in a private/incognito window to confirm it is public.
-- [ ] Copy the instance name, hashtag, and post URL.
+- [ ] Put consented files in a private folder outside Git.
+- [ ] Include independent same-person photos, hard different-person negatives, originals/edits,
+  similar noncopies/backgrounds, crops, small faces, masks/glasses/hair/hands/overlays/profiles,
+  and a consented composite/conflict.
+- [ ] Assign participant, capture-session, and source-family IDs.
+- [ ] Assign each identity and every derivative family to exactly one of development, calibration,
+  or locked test.
+- [ ] Add manual eyes/nose/mouth visibility and coarse pose-bin annotations.
+- [ ] Build the JSONL manifest described in `README.md`, using actual SHA-256 values.
 
-Stop here. Send Codex those three values.
+Stop. Send Codex only: **manifest ready** and its local path. Do not send private photos in chat.
 
-## 3. Send Codex the values
+## Step 3 — controlled Mastodon posts (Sudarshana)
 
-- [ ] Reply with **photos ready**, Mastodon instance, hashtag, and public post URL.
+- [ ] Use controlled accounts whose represented people gave documented biometric permission.
+- [ ] Publish at least six labeled media cases across at least three public posts.
+- [ ] Include one multi-image post and: original, edited copy, independent same-person photo,
+  different consenting person, heavy occlusion, and composite/conflict.
+- [ ] Use one shared hashtag and check every post in an incognito window.
+- [ ] Record the instance, hashtag, authorized account handles/IDs, post IDs, media IDs, and hashes
+  in the private evaluator manifest.
 
-The approved public repository is `hhg-faceproof`. Codex can then run calibration, genuine live
-search, full blockchain verification, and a clean public-repo audit. Do not submit the form until
-the screen recording and repository have both passed an incognito check.
+Stop. Send Codex: **posts ready**, instance, hashtag, and authorized handles. Never send credentials.
+
+## Step 4 — reviewer
+
+- [ ] Choose the human reviewer ID that will appear in final evidence.
+- [ ] Decide the private-media retention/deletion period.
+
+Then Codex can run calibration, freeze policy, run the untouched test once, verify preview recall,
+run the genuine live discovery, seal reviewed evidence, and record the persistent-chain demo.
+
+Repository: `https://github.com/BlueBlaze6335/hhg-faceproof`. Do not submit until the locked report,
+live multi-post ledger, screen recording, and public-repo secret/privacy audit all pass.

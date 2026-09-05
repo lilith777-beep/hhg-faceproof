@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/BlueBlaze6335/hhg-faceproof/schema/evidence-v2.schema.json",
+  "title": "FaceProof private evidence manifest v2",
+  "type": "object",
+  "required": ["schema", "status", "created_at", "run_id", "consent", "query", "search", "match", "claims", "provenance", "human_review", "nonce_hex"],
+  "properties": {
+    "schema": {"const": "faceproof.evidence.v2"},
+    "status": {"enum": ["DRAFT_REVIEW_REQUIRED", "FINAL"]},
+    "created_at": {"type": "string", "format": "date-time"},
+    "run_id": {"type": "string", "pattern": "^fp-"},
+    "consent": {
+      "type": "object",
+      "required": ["asserted_by_operator", "scope", "biometric_comparison_performed", "identity_labels_inferred", "manifest_sha256"],
+      "properties": {
+        "asserted_by_operator": {"const": true},
+        "scope": {"type": "string"},
+        "biometric_comparison_performed": {"const": true},
+        "identity_labels_inferred": {"const": false},
+        "manifest_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "query": {
+      "type": "object",
+      "required": ["image_sha256", "face_count", "detector", "encoder", "embedding_persisted", "copy_descriptor", "input_roles", "runtime"],
+      "properties": {
+        "image_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "face_count": {"type": "integer", "minimum": 1},
+        "embedding_persisted": {"const": false},
+        "input_roles": {"type": "object"}
+      }
+    },
+    "search": {
+      "type": "object",
+      "required": ["provider", "live_query", "scope", "endpoint", "provider_fetched_at", "statuses_scanned", "media_discovered", "vector_backend", "terminal_dispositions"],
+      "properties": {
+        "provider": {"enum": ["mastodon-public-api", "synthetic-placeholder-source", "manifest-fixture-source"]},
+        "live_query": {"type": "boolean"},
+        "vector_backend": {"enum": ["faiss.IndexFlatIP", "exact-face-sort"]},
+        "endpoint": {"type": "string"},
+        "provider_fetched_at": {"type": "string", "format": "date-time"},
+        "statuses_scanned": {"type": "integer", "minimum": 0},
+        "media_discovered": {"type": "integer", "minimum": 0},
+        "terminal_dispositions": {"type": "array"}
+      }
+    },
+    "match": {
+      "type": "object",
+      "required": ["post_url", "canonical_uri", "post_id", "media_id", "candidate_image_sha256", "face_similarity", "face_threshold", "face_state", "copy_state", "content_signals", "decision", "ambiguous", "human_confirmation_required"],
+      "properties": {
+        "candidate_image_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "face_similarity": {"type": "number", "minimum": -1, "maximum": 1},
+        "face_threshold": {"type": ["number", "null"], "minimum": -1, "maximum": 1},
+        "sscd_similarity": {"type": ["number", "null"], "minimum": -1, "maximum": 1},
+        "decision": {"enum": ["both_supported_pending_human_confirmation", "identity_only_supported", "copy_only_identity_unknown", "copy_face_conflict_review", "review", "no_accepted_match", "execution_error"]},
+        "ambiguous": {"type": "boolean"},
+        "human_confirmation_required": {"const": true}
+      }
+    },
+    "claims": {"type": "object"},
+    "provenance": {"type": "object"},
+    "human_review": {"type": ["object", "null"]},
+    "nonce_hex": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "FINAL"}}},
+      "then": {
+        "properties": {
+          "human_review": {"type": "object"},
+          "nonce_hex": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

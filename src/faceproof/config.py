@@ -42,6 +42,9 @@ class Settings:
     sscd_threshold: float = 0.75
     face_retrieval_k: int = 20
     copy_retrieval_k: int = 20
+    mastodon_allowed_accounts: tuple[str, ...] = ()
+    private_media_retention_policy: str = "UNSPECIFIED"
+    media_allowed_hosts: tuple[str, ...] = ()
 
     @classmethod
     def load(cls, project_root: Path | None = None) -> Settings:
@@ -144,4 +147,17 @@ class Settings:
             sscd_threshold=sscd_threshold,
             face_retrieval_k=face_retrieval_k,
             copy_retrieval_k=copy_retrieval_k,
+            mastodon_allowed_accounts=tuple(
+                value.strip()
+                for value in os.getenv("FACEPROOF_MASTODON_ALLOWED_ACCOUNTS", "").split(",")
+                if value.strip()
+            ),
+            private_media_retention_policy=os.getenv(
+                "FACEPROOF_PRIVATE_MEDIA_RETENTION_POLICY", "UNSPECIFIED"
+            ).strip(),
+            media_allowed_hosts=tuple(
+                value.strip().lower()
+                for value in os.getenv("FACEPROOF_MEDIA_ALLOWED_HOSTS", "").split(",")
+                if value.strip()
+            ),
         )

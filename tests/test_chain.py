@@ -4,10 +4,16 @@ from pathlib import Path
 
 import pytest
 
-from faceproof.chain import EthereumAnchor
+from faceproof.chain import REGISTRY_CODE_SHA256, REGISTRY_RUNTIME, EthereumAnchor
 from faceproof.config import Settings
-from faceproof.errors import VerificationError
-from faceproof.integrity import ANCHOR_SCHEMA, anchor_payload, evidence_digest, write_json
+from faceproof.errors import ChainError, VerificationError
+from faceproof.integrity import (
+    ANCHOR_SCHEMA,
+    SCHEMA,
+    anchor_payload,
+    evidence_file_digest,
+    write_json,
+)
 
 
 class HexValue(bytes):
@@ -31,6 +37,14 @@ class FakeEth:
 
     def get_block(self, block_number: int) -> dict:
         return {"hash": self.receipt["blockHash"]}
+
+    @staticmethod
+    def get_code(address: str) -> bytes:
+        return REGISTRY_RUNTIME
+
+    @staticmethod
+    def get_storage_at(address: str, slot: int) -> bytes:
+        return (1).to_bytes(32, "big")
 
 
 class FakeWeb3:
@@ -68,10 +82,13 @@ def _settings(tmp_path: Path) -> Settings:
 
 def _make_anchor(tmp_path: Path) -> tuple[EthereumAnchor, Path, Path]:
     evidence = {
-        "schema": "faceproof.evidence.v1",
+        "schema": SCHEMA,
+        "status": "FINAL",
         "match": {"page_url": "https://x.com/a/status/1"},
     }
-    digest = evidence_digest(evidence)
+    evidence_path = tmp_path / "evidence.json"
+    write_json(evidence_path, evidence)
+    digest = evidence_file_digest(evidence_path)
     tx_hash = HexValue(bytes.fromhex("11" * 32))
     block_hash = HexValue(bytes.fromhex("22" * 32))
     sender = "0x0000000000000000000000000000000000000001"
@@ -81,14 +98,17 @@ def _make_anchor(tmp_path: Path) -> tuple[EthereumAnchor, Path, Path]:
         "from": sender,
         "to": sender,
     }
-    receipt = {"status": 1, "blockNumber": 100, "blockHash": block_hash}
+    receipt = {
+        "status": 1,
+        "blockNumber": 100,
+        "blockHash": block_hash,
+        "logs": [{"address": sender, "topics": [bytes.fromhex(digest)]}],
+    }
     anchor = EthereumAnchor.__new__(EthereumAnchor)
     anchor.settings = _settings(tmp_path)
     anchor.w3 = FakeWeb3(tx, receipt)
 
-    evidence_path = tmp_path / "evidence.json"
     receipt_path = tmp_path / "anchor.json"
-    write_json(evidence_path, evidence)
     write_json(
         receipt_path,
         {
@@ -101,6 +121,8 @@ def _make_anchor(tmp_path: Path) -> tuple[EthereumAnchor, Path, Path]:
             "block_hash": block_hash.hex(),
             "sender": sender,
             "recipient": sender,
+            "contract_code_sha256": REGISTRY_CODE_SHA256,
+            "commitment_log_topic": "0x" + digest,
             "explorer_url": None,
         },
     )
@@ -119,7 +141,25 @@ def test_tampered_evidence_fails_on_chain_verification(tmp_path: Path) -> None:
     anchor, evidence_path, receipt_path = _make_anchor(tmp_path)
     write_json(
         evidence_path,
-        {"schema": "faceproof.evidence.v1", "match": {"page_url": "https://x.com/a/status/2"}},
+        {"schema": SCHEMA, "status": "FINAL", "match": {"page_url": "https://x.com/a/status/2"}},
     )
     with pytest.raises(VerificationError, match=r"digest_recomputed|transaction_payload"):
         anchor.verify(evidence_path, receipt_path)
+
+
+def test_chain_writes_reject_mainnet_even_with_explicit_authorization(tmp_path: Path) -> None:
+    anchor, _, _ = _make_anchor(tmp_path)
+    anchor.w3.eth.chain_id = 1
+    anchor.rpc_url = "https://mainnet.example"
+    with pytest.raises(ChainError, match="mainnet"):
+        anchor._assert_write_authorized(allow_public_testnet=True)
+
+
+def test_remote_rpc_write_requires_explicit_public_testnet_authorization(
+    tmp_path: Path,
+) -> None:
+    anchor, _, _ = _make_anchor(tmp_path)
+    anchor.rpc_url = "https://sepolia.example"
+    with pytest.raises(ChainError, match="explicit --allow-public-testnet"):
+        anchor._assert_write_authorized()
+    anchor._assert_write_authorized(allow_public_testnet=True)

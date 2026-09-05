@@ -1,272 +1,195 @@
 # FaceProof
 
-FaceProof is a consent-first, zero-paid-service pipeline for **HH Goa 2026 Task 3**:
+FaceProof v0.3 is an open-source, consent-governed CLI for HH Goa 2026 Task 3:
 
 ```text
-one-face scan
-  -> live public Mastodon media enumeration
-  -> YuNet faces + SFace identity descriptors
-  -> SSCD copy descriptors
-  -> exact FAISS cosine retrieval on both descriptor spaces
-  -> full-resolution SFace + SSCD + pHash + AKAZE verification
-  -> explicit identity/content decision matrix + human confirmation
-  -> canonical evidence SHA-256
-  -> local Anvil Ethereum transaction
-  -> independent transaction/block re-verification
+consented face references + explicit image-copy references
+  -> authorized Mastodon media discovery
+  -> independent face and copy verification
+  -> reviewed evidence sealing
+  -> persistent local Ethereum commitment and fresh-process verification
 ```
 
-It does **not** infer a person's name. It asks whether a face in a consenting input is
-visually consistent with a face in a genuinely discovered public post. Embeddings remain in
-memory; the input image and embedding are never written to the evidence or blockchain.
+There is no paid API and no website. The face baseline is OpenCV YuNet + SFace. Copy retrieval uses
+the official SSCD DISC-Mixup TorchScript artifact. Both descriptor types use separate exact
+`faiss.IndexFlatIP` indexes. BiSeNet face parsing and five-landmark SQPnP provide conservative
+quality evidence; neither is allowed to manufacture identity confidence.
 
-## Why this design
+Read [PIPELINE_CONTEXT.md](PIPELINE_CONTEXT.md) for the visual system graph and recent decisions.
 
-There is no honest, free, open-source global reverse-face web index. Claiming otherwise would hide
-a proprietary index, scrape platforms against their rules, or use a pre-picked result. FaceProof
-uses a reproducible scoped search instead: the public/hashtag timeline of an operator-selected
-open-source Mastodon instance. The API is queried live during every run, and returned post/media
-identifiers, timestamps, endpoint, counts, and fetch time are preserved as provenance.
+## Safety boundary
 
-For the recording, publish a consenting image under a shared hashtag containing several unrelated
-image posts (for example the event's public tag), wait until the instance returns it, and configure
-that tag. The matcher must choose the target from multiple live candidates. A unique tag is useful
-only for connector diagnosis; do not use a one-result tag as the final search demonstration.
+- Every enrollment face and every candidate face needs a manifest record with documented biometric
+  permission. Public visibility and ownership of a posting account are not consent.
+- Image-copy discovery is a separate permitted process. A candidate without biometric permission
+  can be evaluated for copying, but its face is not encoded and identity remains unknown.
+- `enrollment_face_images` and `copy_reference_images` are separate CLI inputs. The same file may be
+  declared for both roles; it is never reused silently.
+- Face embeddings are memory-only by default. Evidence contains scores, boxes, model hashes and
+  claims—not embeddings, private images, tokens, keys, or identifying URLs on chain.
+- FaceProof does not infer identity labels from usernames and does not automate takedowns.
 
-## Requirement mapping
+## Install
 
-| Task requirement | Implementation |
-|---|---|
-| Detect/encode face | OpenCV YuNet + SFace, run locally with pinned model checksums |
-| Copy detection | Meta SSCD DISC-Mixup descriptors, pinned by SHA-256 and run locally |
-| Genuine social search | Live Mastodon public/hashtag timeline API; no result URL in code/config |
-| Retrieval | Exact cosine search with FAISS `IndexFlatIP` over normalized SFace and SSCD vectors |
-| Accuracy | Single-face gate; dual retrieval; full-resolution re-verification; exact hash, SSCD, pHash and AKAZE/RANSAC corroboration; conflict and ambiguity blocks |
-| Blockchain upload | Versioned SHA-256 evidence payload in Ethereum-compatible transaction calldata |
-| Re-verification | Recompute digest, fetch transaction/receipt/block, verify payload, chain, status, block hash, sender, recipient, and confirmations |
-| No paid software | Python/OpenCV/PyTorch/SSCD/FAISS/Mastodon/Foundry Anvil; local chain is the default |
-
-## Quick start
-
-Python 3.11 is the tested baseline.
+Requires Python 3.11–3.14. Anvil from Foundry is needed only for blockchain checks.
 
 ```powershell
 cd faceproof
-py -3.11 -m venv .venv
+py -3.13 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev,vision]"
-Copy-Item .env.example .env
 faceproof models install
-faceproof doctor
+Copy-Item .env.example .env
 ```
 
-Run the complete bundled synthetic acceptance proof with one command:
+`model-lock.json` pins every learned artifact, source revision, SHA-256, preprocessing/output
+contract, and reviewed code/weight terms. `requirements.lock` records the verified environment.
+Models are checksum-verified before loading and never auto-update during a scan.
 
-```powershell
-faceproof acceptance
-```
+## Consent/evaluation manifest
 
-It verifies a fictional same-person pair against a different-person negative, writes evidence,
-starts a localhost Anvil process when available, anchors and re-verifies the digest, confirms a
-tampered copy is rejected, then stops the Anvil process it started. This proves the software path;
-it is deliberately labeled synthetic and does not replace the required genuine live-post run.
+The JSONL manifest is the control plane for permission and identity-disjoint evaluation. Each row
+contains:
 
-For a short human checklist, open [`DO_THIS_NEXT.md`](DO_THIS_NEXT.md).
+- `image_id`, relative `path`, exact `sha256`;
+- one or more roles: `enrollment_face`, `candidate_face`, `copy_reference`, `candidate_copy`;
+- `participant_ids`, `biometric_consent`, and `consent_ref` for biometric roles;
+- `capture_session_id`, `source_image_family_id`, and `split` (`development`, `calibration`, or
+  `test`);
+- face annotations with their own participant/consent references;
+- optional `media_id`, `canonical_uri`, `copy_parent_image_id`, and evaluator-only labels.
 
-Install Foundry from its official installer, then start a local chain in a second terminal:
+Loading fails on missing permission, changed bytes, duplicate IDs, cross-split identities,
+cross-split source families, exact-byte leakage, or copy lineage crossing a split. Real calibration
+also needs independent same-person photographs; synthetic edits do not create new identities.
 
-```powershell
-anvil --chain-id 31337
-```
-
-Anvil's first unlocked development account is used by default. Do not expose Anvil to a network or
-use its well-known development keys for real funds. A Sepolia/private-key profile is shown only as
-an optional commented block in `.env.example`; it is not required for submission.
-
-## Configure and prove genuine search
-
-Set a unique tag in `.env`:
+## Configure authorized Mastodon discovery
 
 ```dotenv
 FACEPROOF_MASTODON_INSTANCE=https://mastodon.social
 FACEPROOF_MASTODON_TAG=HHGoa2026
+FACEPROOF_MASTODON_ALLOWED_ACCOUNTS=controlled_account,second_controlled_account
 ```
 
-Post the consenting reference/near-reference image publicly with that shared hashtag. Ensure the
-timeline contains multiple image posts, then prove the connector sees current social data before
-running biometrics:
+The client performs real pagination, supports multi-image posts, normalizes boosts while retaining
+wrapper provenance, honors bounded 429/5xx retries, and uses `preview_url` only for preview
+experiments. Originals use the attachment `url`. Image fetching is restricted to the configured
+instance host and revalidates DNS and the connected socket peer after every redirect. No Mastodon
+authorization header is sent to media hosts.
+
+Publishing is deliberately not automated. Create the six consented cases on at least three
+controlled posts (original, edited copy, independent same-person photo, different consenting
+person, occlusion, and composite/conflict), include one multi-image post, and use a small page size
+in the recording to visibly exercise pagination.
+
+## Policy/evaluation lifecycle
+
+Full-resolution-all is authoritative and the default. Preview top-K is only an optimization until
+its recall target passes on frozen data.
 
 ```powershell
-faceproof source probe
+# 1. Review-only development/calibration execution using the actual pipeline
+faceproof evaluate-manifest .\private-data\manifest.jsonl `
+  --policy .\policy\provisional-review-only.json --split calibration `
+  --output .\private-results\calibration-evaluation.json
+
+# 2. Select separate face/copy thresholds from calibration only
+faceproof calibrate-manifest-report .\private-results\calibration-evaluation.json `
+  --policy-id faceproof-study-1 --output .\private-results\calibration-decision.json
+
+# 3. Freeze a pre-test policy, then run the untouched test split
+faceproof freeze-policy .\private-results\calibration-decision.json `
+  --output .\private-results\policy-pretest.json
+faceproof evaluate-manifest .\private-data\manifest.jsonl `
+  --policy .\private-results\policy-pretest.json --split test `
+  --output .\private-results\test-evaluation.json
+
+# 4. Bind the immutable test report without changing thresholds
+faceproof freeze-policy .\private-results\calibration-decision.json `
+  --test-report .\private-results\test-evaluation.json `
+  --output .\private-results\policy-final.json
+
+# 5. Compare old face-only, dual, and dual-plus-quality on the same frozen split
+faceproof compare-manifest .\private-data\manifest.jsonl `
+  --policy .\private-results\policy-final.json --split test `
+  --output-dir .\private-results\comparison
 ```
 
-The probe prints the exact API endpoint, fetch scope, pages/statuses/media scanned, and a current
-post URL. No face bytes are sent to Mastodon; the client only enumerates public post metadata/media,
-then downloads bounded candidates for local matching.
+The runner reports media, expected face-vector, identity, and query-reference counts; search-level
+FPIR/FNIR/TPIR with confidence intervals; incorrect known returns; preview K=5/10/20/50 truth
+recall and exhaustive-verifier retention; bytes, latency, failures, and every terminal disposition.
+An unknown query counts once if it returns any accepted wrong candidate. Pair counts are not
+misreported as independent searches.
 
-## Run end to end
+The default research targets are provisional: FPIR upper 95% bound <=1%, TPIR lower 95% bound
+>=90%, and preview candidate-recall lower 95% bound >=99% for identity and copy positives. Failure
+to meet them is a blocked result, not a threshold adjustment on the test set.
 
-Use only your own face or a person who explicitly agreed:
+## One end-to-end live command
+
+After the manifest, controlled posts, and frozen policy are ready:
 
 ```powershell
-faceproof run .\demo-input\consented-face.jpg --i-have-consent
+faceproof run .\private-data\enrollment.jpg `
+  --copy-reference .\private-data\original.jpg `
+  --manifest .\private-data\manifest.jsonl `
+  --policy .\private-results\policy-final.json `
+  --reviewer "reviewer-id" --i-have-consent
 ```
 
-The CLI shows the selected post, author, canonical URI, face score/threshold, independent image
-signals, ambiguity state, and image SHA-256. It always requests human confirmation before the chain
-write. Even `--yes` cannot anchor an ambiguous result.
+If an enrollment image has multiple faces, add exactly one `--face-index N` for that image. The run
+discovers media, performs exhaustive full-resolution verification, writes a draft, asks the named
+reviewer to confirm explicit claims, seals exact evidence bytes, anchors the digest, and verifies
+the registry/transaction/receipt/block.
 
-Separate stages are useful for inspection:
+Public-testnet writes require both an explicit command and `--allow-public-testnet`. Ethereum
+mainnet is prohibited. The default local chain is Anvil chain 31337.
 
-```powershell
-faceproof discover .\demo-input\consented-face.jpg --i-have-consent
-faceproof anchor .\artifacts\RUN_ID\evidence.json
-faceproof verify .\artifacts\RUN_ID\evidence.json .\artifacts\RUN_ID\anchor.json
-```
+## Evidence and blockchain meaning
 
-Tamper test: copy `evidence.json`, alter one character in a value, and verify the copy against the
-original receipt. Verification must fail because its recomputed digest no longer equals transaction
-calldata.
+After review, the private v2 manifest includes a random 32-byte nonce, input roles/hashes, consent
+references, observation times, source/media IDs, boxes/associations, raw quality and similarity
+scores, thresholds and axis states, human review, actual model/policy/report hashes, runtime and
+dependency/source fingerprints, and the full terminal ledger. It is encoded once as sorted UTF-8
+JSON with fixed separators and `allow_nan=False`; this is not claimed as RFC 8785.
 
-## Accuracy model
+The version-domain SHA-256 of those exact bytes is stored in a pinned minimal digest-registry
+contract. The receipt stays outside the evidence. Verification checks chain identity, deployed
+bytecode, storage, commitment log, transaction input/result, receipt and canonical block. Synthetic acceptance
+stops Anvil, starts a fresh process from persisted state, and verifies the old commitment without
+redeploying or re-anchoring. This is `LOCAL_PERSISTENCE_VERIFIED`, not an independent public
+timestamp or proof that the reviewed claims are true.
 
-FaceProof deliberately separates two claims:
-
-1. **Same identity:** SFace cosine similarity exceeds the configured face threshold.
-2. **Same/derived content:** exact SHA-256, SSCD cosine, close DCT perceptual hash, or sufficient
-   AKAZE/RANSAC geometric support corroborates the image relationship.
-
-Every bounded preview is encoded into both spaces. Two exact FAISS `IndexFlatIP` indexes retrieve
-the top face and top copy candidates independently; pHash adds a deterministic rescue lane. The
-union is downloaded at full resolution and every learned score is recomputed before a result can
-be selected. Copy similarity without a face match is recorded as `copy_face_conflict`, never as a
-person match. Near-tied faces are blocked unless content uniquely disambiguates them or both hits
-are the exact same remote asset.
-
-SSCD uses the official DISC-Mixup ResNet-50 TorchScript checkpoint, 320×320 RGB/ImageNet
-preprocessing, L2-normalized 512-dimensional descriptors, and cosine similarity. The default
-`FACEPROOF_SSCD_THRESHOLD=0.75` follows the upstream DISC guidance; it is not silently lowered to
-make the synthetic fixture pass. The fixture's derived edit is recovered by SFace + AKAZE while
-SSCD remains an independent measured signal.
-
-Face detection/encoding uses the decoded source image. AKAZE geometric corroboration is separately
-bounded to a 512-pixel working edge: the placeholder pair retained 35+ RANSAC inliers at a 0.44+
-ratio while reducing the warm benchmark from about 3.0 seconds to 0.23 seconds on the development
-machine. Cold CLI startup remains hardware-dependent and is reported in evidence timings.
-
-`FACEPROOF_FACE_THRESHOLD=0.50` is a conservative project starting point above the upstream SFace
-demo's 0.363 threshold, **not a universal accuracy guarantee**. Before the final recording,
-calibrate it on consented same-person images spanning
-pose/light/age and non-match faces representative of the demo. Record false-accept and false-reject
-rates and set the threshold explicitly; the evidence states whether the threshold came from the
-environment or the default. Human review remains mandatory.
-
-```powershell
-faceproof calibrate-threshold reference.jpg .\calibration\positive .\calibration\negative
-```
-
-Use substantially more than the two-positive/five-negative smoke-test minimum. For a credible
-final report, include varied pose, lighting, crop, compression and occlusion, plus hard negatives
-that resemble the subject. Report sample counts and uncertainty; never call the bundled synthetic
-pair a population-level accuracy metric.
-The generated report contains only filenames, hashes, scores, measured error rates, and the
-recommended balanced-accuracy threshold—not embeddings or image bytes. Keep the calibration images
-outside Git.
-
-Calibrate copy detection separately. Copy positives must be transformations of the exact reference
-(resize, crop, recompression, overlays, screenshots), not merely other photos of the same person:
-
-```powershell
-faceproof calibrate-copy reference.jpg .\copy-calibration\positive .\copy-calibration\negative
-```
-
-Use unrelated and visually similar hard-negative images, then validate the chosen SSCD operating
-point on a held-out transform set before changing `FACEPROOF_SSCD_THRESHOLD`.
-
-YuNet detection uses `FACEPROOF_DETECTION_THRESHOLD=0.80`. The upstream demo commonly uses 0.90,
-but the placeholder acceptance set exposed false rejections at 0.90 (positive confidences 0.866 and
-0.872). At 0.80 both positives were detected while the SFace verifier still separated the
-same-person pair (0.936) from the different-person pair (0.404). Re-check this gate on real,
-consented validation images before submission.
-
-## Evidence and blockchain semantics
-
-`evidence.json` includes:
-
-- query image SHA-256/byte count, face box, pinned detector/encoder/SSCD IDs and checksums;
-- live source endpoint/scope/time, page/status/media counts, bounded failures;
-- canonical post/media IDs, public URL, author handle, timestamp, text and text hash;
-- candidate image hash/type/retrieved URL, face count/index/box/score/threshold;
-- exact-image, SSCD, pHash, AKAZE inliers, dual-FAISS ranks/channels, decision, selection margin,
-  ambiguity, conflicts, runtime versions, timings, and top candidates;
-- explicit claims and non-claims.
-
-Failures preserve only a URL hash and error class. Evidence excludes original image bytes,
-embeddings, secrets, and private keys.
-
-The blockchain proves that a precise evidence fingerprint was included in a transaction in a
-canonical block. It does not prove legal identity, post authorship/truth, or that the remote post
-will remain online. Local Anvil is acceptable under the task's local/simulated-chain clause and is
-reproducible for the recording; its state disappears when stopped unless you use Anvil state
-persistence.
-
-## Verification and tests
+## Checks
 
 ```powershell
 ruff check src tests
-pytest
+pytest -q
 faceproof models status
-faceproof source probe
-faceproof chain status
+faceproof doctor
+faceproof acceptance --skip-chain
+faceproof acceptance
 ```
 
-The deterministic suite covers canonical hashing, tamper rejection, transaction/block checks,
-consent, mismatch/conflict rejection, SSCD loading, exact FAISS ranking, source parsing/provenance,
-SSRF and download limits, preview/full selection, pHash stability, AKAZE transforms, configuration
-validation, evidence semantics, and ambiguity metadata.
-Mocked connector tests are never described as live search; `source probe` is the live integration
-gate.
+The bundled images are fictional synthetic integration fixtures. They test software wiring only
+and are never presented as accuracy evidence.
 
-Before recording:
+## Known blockers
 
-- [ ] Use a shared live hashtag with multiple image posts and show `source probe` scanning them.
-- [ ] Use a sharp, well-lit, single-face scan with explicit consent.
-- [ ] Confirm the returned post manually and ensure `ambiguous` is `False`.
-- [ ] Show the evidence component signals, not only a face score.
-- [ ] Run Anvil locally and show its transaction log/transaction hash.
-- [ ] Show every `faceproof verify` check passing.
-- [ ] Modify an evidence copy and show verification fail.
-- [ ] Run tests/lint and the repository secret scan before publishing.
+The repository is code-complete for the bounded pipeline, but real claims remain blocked until:
 
-## Known limitations and safety
+- an identity-disjoint, permission-documented development/calibration/test corpus exists;
+- visibility and real pose-bin annotations validate the quality policy;
+- enough independent known/unknown searches support the declared confidence bounds;
+- preview Recall@K passes without hiding exhaustive verifier misses;
+- at least six real media cases across three authorized Mastodon posts are discoverable;
+- the human reviewer confirms each explicit claim; and
+- optional public-testnet RPC/funds are explicitly authorized (local persistence needs neither).
 
-- Search covers only public image posts visible to the selected Mastodon instance/timeline and
-  bounded pages. It is not global web search and cannot see private/deleted/unfederated content.
-- Face matching is probabilistic and may vary with pose, light, occlusion, age, image quality, and
-  population. SFace's packaged weight provenance/training-data documentation should be treated as a
-  model-card limitation; do not claim demographic fairness without measuring it.
-- SSCD is a copy-detection model, not a face-recognition model. Its upstream repository is archived;
-  FaceProof pins the model checksum and keeps SFace identity verification as a separate mandatory
-  gate. CPU SSCD inference is accurate but slower; a compatible CUDA PyTorch build is recommended
-  for larger candidate sets.
-- There is no explicit face segmentation, pose normalization, liveness detection, or multi-view
-  identity ensemble yet. Those are research/calibration gaps, not hidden features. See
-  [`PIPELINE_CONTEXT.md`](PIPELINE_CONTEXT.md).
-- A unique hashtag is the reliable open-source demo path. Public firehose search is broader but can
-  miss older content within the bounded scan.
-- A public post/image may disappear later. The chain still verifies the evidence hash, but this
-  project intentionally does not republish copyrighted image bytes.
-- The fetcher requires public HTTPS destinations, rejects private/reserved addresses, limits
-  redirects and bytes, validates image MIME/signatures, and should still run least-privileged.
-- Consent is mandatory. Do not use this for surveillance, stalking, doxxing, or covert identity
-  inference.
+See [IMPLEMENTATION_CHECKLIST.md](IMPLEMENTATION_CHECKLIST.md) for exact current statuses. No SOTA,
+zero-error, ownership, capture-time, or network-wide-search claim is made from component choice or
+the six-case demo.
 
-## Repository hygiene and license
+## License
 
-```powershell
-git status --short
-git ls-files | Select-String -Pattern '(\.env$|artifacts/|models/.+\.onnx|private|credential)'
-```
-
-The second command should print nothing sensitive. Generated models, inputs, `.env`, artifacts,
-cache/build directories, and credentials stay untracked. Project source is MIT licensed. See
-`THIRD_PARTY.md` for upstream components, licenses, and model caveats.
+Project code is MIT licensed. See `THIRD_PARTY.md` and `model-lock.json` for dependency/model terms.

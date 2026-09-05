@@ -1,9 +1,10 @@
 import socket
 
+import httpx
 import pytest
 
 from faceproof.errors import UnsafeRemoteResource
-from faceproof.remote import image_media_type, validate_public_https_url
+from faceproof.remote import SafeImageFetcher, image_media_type, validate_public_https_url
 
 
 def test_rejects_non_https_before_dns() -> None:
@@ -50,3 +51,26 @@ def test_accepts_public_dns_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
 )
 def test_image_signature_detection(content: bytes, expected: str | None) -> None:
     assert image_media_type(content) == expected
+
+
+class _PeerStream:
+    def __init__(self, address: str) -> None:
+        self.address = address
+
+    def get_extra_info(self, name: str):
+        return (self.address, 443) if name == "server_addr" else None
+
+
+def test_connected_peer_blocks_dns_rebinding_and_test_loopback_is_explicit() -> None:
+    response = httpx.Response(
+        200, extensions={"network_stream": _PeerStream("127.0.0.1")}
+    )
+    fetcher = SafeImageFetcher(timeout_s=1, max_bytes=10, max_redirects=0)
+    with pytest.raises(UnsafeRemoteResource, match="not a public"):
+        fetcher._validate_connected_peer(response)
+    test_fetcher = SafeImageFetcher(
+        timeout_s=1, max_bytes=10, max_redirects=0, allow_loopback_for_tests=True
+    )
+    test_fetcher._validate_connected_peer(response)
+    fetcher.close()
+    test_fetcher.close()

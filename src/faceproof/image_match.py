@@ -24,7 +24,7 @@ def hash_distance(left: int, right: int) -> int:
     return (left ^ right).bit_count()
 
 
-def _bounded_gray(image: Any, cv2: Any, max_dimension: int = 512) -> Any:
+def _bounded_gray(image: Any, cv2: Any, max_dimension: int = 512) -> tuple[Any, float]:
     height, width = image.shape[:2]
     scale = min(1.0, max_dimension / max(height, width))
     if scale < 1.0:
@@ -33,12 +33,13 @@ def _bounded_gray(image: Any, cv2: Any, max_dimension: int = 512) -> Any:
             (max(1, round(width * scale)), max(1, round(height * scale))),
             interpolation=cv2.INTER_AREA,
         )
-    return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+    return gray, scale
 
 
 def geometric_match(query: Any, candidate: Any, cv2: Any) -> FeatureMatch:
-    query_gray = _bounded_gray(query, cv2)
-    candidate_gray = _bounded_gray(candidate, cv2)
+    query_gray, query_scale = _bounded_gray(query, cv2)
+    candidate_gray, candidate_scale = _bounded_gray(candidate, cv2)
     detector = cv2.AKAZE_create()
     query_keypoints, query_descriptors = detector.detectAndCompute(query_gray, None)
     candidate_keypoints, candidate_descriptors = detector.detectAndCompute(candidate_gray, None)
@@ -57,8 +58,42 @@ def geometric_match(query: Any, candidate: Any, cv2: Any) -> FeatureMatch:
 
     query_points = np.float32([query_keypoints[item.queryIdx].pt for item in good])
     candidate_points = np.float32([candidate_keypoints[item.trainIdx].pt for item in good])
-    _, mask = cv2.findHomography(query_points, candidate_points, cv2.RANSAC, 3.0)
-    if mask is None:
+    homography, mask = cv2.findHomography(query_points, candidate_points, cv2.RANSAC, 3.0)
+    if mask is None or homography is None or not np.all(np.isfinite(homography)):
         return FeatureMatch(len(good), 0, 0.0)
     inliers = int(mask.ravel().sum())
-    return FeatureMatch(len(good), inliers, inliers / len(good))
+    if inliers < 4 or abs(float(np.linalg.det(homography[:2, :2]))) < 1e-8:
+        return FeatureMatch(len(good), inliers, inliers / len(good))
+    keep = mask.ravel().astype(bool)
+    source_inliers = query_points[keep]
+    candidate_inliers = candidate_points[keep]
+    projected = cv2.perspectiveTransform(
+        source_inliers.reshape(-1, 1, 2), homography
+    ).reshape(-1, 2)
+    diagonal = float(np.hypot(*candidate_gray.shape[:2]))
+    reprojection = float(np.linalg.norm(projected - candidate_inliers, axis=1).mean() / diagonal)
+
+    def coverage(points: Any, shape: tuple[int, ...]) -> float:
+        hull = cv2.convexHull(points.reshape(-1, 1, 2))
+        return float(cv2.contourArea(hull) / (shape[0] * shape[1]))
+
+    source_coverage = coverage(source_inliers, query_gray.shape)
+    candidate_coverage = coverage(candidate_inliers, candidate_gray.shape)
+    source_transform = np.array(
+        [[query_scale, 0, 0], [0, query_scale, 0], [0, 0, 1]], dtype=np.float64
+    )
+    candidate_inverse = np.array(
+        [[1 / candidate_scale, 0, 0], [0, 1 / candidate_scale, 0], [0, 0, 1]],
+        dtype=np.float64,
+    )
+    full_homography = candidate_inverse @ homography @ source_transform
+    full_homography /= full_homography[2, 2]
+    return FeatureMatch(
+        len(good),
+        inliers,
+        inliers / len(good),
+        reprojection,
+        source_coverage,
+        candidate_coverage,
+        tuple(float(value) for value in full_homography.reshape(-1)),
+    )

@@ -1,0 +1,26 @@
+{
+  "schema": "faceproof.policy.v1",
+  "policy_id": "faceproof-provisional-review-only-2026-09-05",
+  "status": "REVIEW_ONLY",
+  "bounds": {
+    "max_gallery_media": 200,
+    "max_enrollment_references": 8,
+    "max_copy_references": 8
+  },
+  "thresholds": {
+    "face_accept": null,
+    "face_review": null,
+    "copy_accept": null,
+    "copy_review": null
+  },
+  "quality_validation": {
+    "pose": false,
+    "visibility": false
+  },
+  "artifacts": {
+    "model_lock_sha256": "1ccc3937919689f8b792c2126d7cd6f920c8eb3bdf4afafad787ec5d0d806941",
+    "calibration_report_sha256": null,
+    "test_report_sha256": null
+  },
+  "note": "No operational claim is permitted until identity-disjoint calibration and locked-test evaluation are supplied."
+}

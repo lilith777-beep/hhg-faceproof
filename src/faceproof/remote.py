@@ -3,6 +3,7 @@ from __future__ import annotations
 import ipaddress
 import socket
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from urllib.parse import urljoin, urlsplit
 
 import httpx
@@ -37,6 +38,7 @@ class RemoteImage:
     url: str
     content: bytes
     media_type: str
+    fetched_at: str | None = None
 
 
 def _is_public_ip(address: str) -> bool:
@@ -84,11 +86,15 @@ class SafeImageFetcher:
         max_bytes: int,
         max_redirects: int,
         user_agent: str = "FaceProof/0.3 (+https://github.com/BlueBlaze6335/hhg-faceproof)",
+        allowed_hosts: frozenset[str] | None = None,
+        allow_loopback_for_tests: bool = False,
     ) -> None:
         self.timeout_s = timeout_s
         self.max_bytes = max_bytes
         self.max_redirects = max_redirects
         self.user_agent = user_agent
+        self.allowed_hosts = allowed_hosts
+        self.allow_loopback_for_tests = allow_loopback_for_tests
         self._client = httpx.Client(
             timeout=self.timeout_s,
             follow_redirects=False,
@@ -112,9 +118,13 @@ class SafeImageFetcher:
             "User-Agent": self.user_agent,
         }
         for redirect_count in range(self.max_redirects + 1):
+            hostname = (urlsplit(current).hostname or "").lower()
+            if self.allowed_hosts is not None and hostname not in self.allowed_hosts:
+                raise UnsafeRemoteResource("candidate host is outside the approved media hosts")
             validate_public_https_url(current)
             try:
                 with self._client.stream("GET", current, headers=headers) as response:
+                    self._validate_connected_peer(response)
                     if response.status_code in {301, 302, 303, 307, 308}:
                         location = response.headers.get("location")
                         if not location:
@@ -153,8 +163,25 @@ class SafeImageFetcher:
                         raise SearchError(
                             "candidate image signature does not match its declared content type"
                         )
-                    return RemoteImage(current, content, detected_type)
+                    return RemoteImage(
+                        current,
+                        content,
+                        detected_type,
+                        datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                    )
             except httpx.HTTPError as exc:
                 raise SearchError(f"candidate download failed: {exc}") from exc
 
         raise SearchError("candidate download did not complete")
+
+    def _validate_connected_peer(self, response: httpx.Response) -> None:
+        """Reject DNS-rebinding/redirect pivots using the socket's connected peer."""
+        stream = response.extensions.get("network_stream")
+        peer = stream.get_extra_info("server_addr") if stream is not None else None
+        address = peer[0] if isinstance(peer, tuple) and peer else None
+        if not isinstance(address, str):
+            raise UnsafeRemoteResource("could not verify the connected media host address")
+        if not _is_public_ip(address):
+            if self.allow_loopback_for_tests and ipaddress.ip_address(address).is_loopback:
+                return
+            raise UnsafeRemoteResource("connected media host is not a public address")

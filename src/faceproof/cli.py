@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlsplit
 
 import httpx
 import typer
@@ -22,12 +23,33 @@ from .copydetect import (
     install_sscd_model,
     load_sscd_engine,
 )
+from .dataset import load_manifest
 from .errors import FaceProofError, NoVerifiedMatch
+from .evaluation import (
+    ManifestImageFetcher,
+    ManifestMediaSource,
+    calibrate_from_evaluation,
+    run_manifest_evaluation,
+)
+from .face_analysis import (
+    PARSER_FILENAME,
+    PARSER_SHA256,
+    FaceParser,
+    FaceQualityAssessor,
+    install_parser_model,
+)
 from .faces import MODEL_SPECS, FaceEngine, ModelSpec, _file_sha256, download_models
-from .integrity import evidence_digest, read_json
+from .integrity import (
+    evidence_digest,
+    evidence_file_digest,
+    finalize_evidence,
+    read_json,
+    write_json,
+)
 from .pipeline import DiscoveryPipeline
+from .policy import freeze_policy, load_policy
 from .remote import SafeImageFetcher
-from .search import MastodonMediaSource
+from .search import CandidateSource, MastodonMediaSource
 
 load_dotenv()
 console = Console()
@@ -58,24 +80,60 @@ def _source(
         page_size=settings.mastodon_page_size,
         max_media=settings.max_candidates,
         timeout_s=settings.request_timeout_s,
+        allowed_accounts=frozenset(settings.mastodon_allowed_accounts) or None,
     )
 
 
 def _pipeline(
-    settings: Settings, *, instance: str | None = None, tag: str | None = None
+    settings: Settings,
+    *,
+    instance: str | None = None,
+    tag: str | None = None,
+    manifest: Path | None = None,
+    policy_path: Path | None = None,
+    source_override: CandidateSource | None = None,
+    fetcher_override: object | None = None,
+    enable_copy: bool = True,
+    enable_quality: bool = True,
 ) -> DiscoveryPipeline:
+    face_engine = FaceEngine(
+        settings.model_dir, detection_threshold=settings.detection_threshold
+    )
+    selected_policy = policy_path or (
+        settings.project_root / "policy" / "provisional-review-only.json"
+    )
+    policy = load_policy(selected_policy, project_root=settings.project_root)
+    parser = FaceParser(settings.model_dir, face_engine.cv2) if enable_quality else None
     return DiscoveryPipeline(
         settings=settings,
-        face_engine=FaceEngine(
-            settings.model_dir, detection_threshold=settings.detection_threshold
-        ),
-        candidate_source=_source(settings, instance=instance, tag=tag),
-        image_fetcher=SafeImageFetcher(
+        face_engine=face_engine,
+        candidate_source=source_override
+        or _source(settings, instance=instance, tag=tag),
+        image_fetcher=fetcher_override
+        or SafeImageFetcher(
             timeout_s=settings.request_timeout_s,
             max_bytes=settings.max_image_bytes,
             max_redirects=settings.max_redirects,
+            allowed_hosts=frozenset(
+                {
+                    str(urlsplit(instance or settings.mastodon_instance).hostname).lower(),
+                    *settings.media_allowed_hosts,
+                }
+            ),
         ),
-        copy_engine=_copy_engine(settings),
+        copy_engine=_copy_engine(settings) if enable_copy else None,
+        consent_manifest=load_manifest(manifest) if manifest is not None else None,
+        policy=policy,
+        quality_assessor=(
+            FaceQualityAssessor(
+                face_engine.cv2,
+                parser,
+                pose_policy_validated=policy.pose_policy_validated,
+                visibility_policy_validated=policy.visibility_policy_validated,
+            )
+            if enable_quality
+            else None
+        ),
         progress=lambda message: console.print(f"[cyan]->[/cyan] {message}"),
     )
 
@@ -97,18 +155,28 @@ def _copy_engine(settings: Settings) -> SSCDDescriptorEngine | None:
 
 def _show_match(bundle: dict) -> None:
     match = bundle["match"]
-    table = Table(title="Locally verified public-post candidate", show_header=False)
+    table = Table(title="FaceProof public-post candidate assessment", show_header=False)
     table.add_column("Field", style="dim")
     table.add_column("Value", overflow="fold")
     table.add_row("Post", str(match["post_url"]))
     table.add_row("Author", str(match["author_handle"]))
     table.add_row("Canonical URI", str(match["canonical_uri"]))
     table.add_row("Face similarity", f"{float(match['face_similarity']):.3f}")
-    table.add_row("Threshold", f"{float(match['face_threshold']):.3f}")
+    face_threshold = match.get("face_threshold")
+    table.add_row(
+        "Face threshold",
+        f"{float(face_threshold):.3f}" if face_threshold is not None else "not calibrated",
+    )
     table.add_row("Face match", str(bool(match.get("face_match", True))))
     if match.get("sscd_similarity") is not None:
         table.add_row("SSCD similarity", f"{float(match['sscd_similarity']):.3f}")
-        table.add_row("SSCD threshold", f"{float(match['sscd_threshold']):.3f}")
+        sscd_threshold = match.get("sscd_threshold")
+        table.add_row(
+            "SSCD threshold",
+            f"{float(sscd_threshold):.3f}"
+            if sscd_threshold is not None
+            else "not calibrated",
+        )
     table.add_row("Decision", str(match.get("decision", "legacy_face_match")))
     table.add_row("Same image/content", str(bool(match["same_content"])))
     table.add_row("Ambiguous", str(bool(match["ambiguous"])))
@@ -123,6 +191,8 @@ def install_models() -> None:
     for path in download_models(settings.model_dir):
         console.print(f"[green]OK[/green] {path.name}  sha256={_file_sha256(path)}")
     path = install_sscd_model(settings.model_dir)
+    console.print(f"[green]OK[/green] {path.name}  sha256={file_sha256(path)}")
+    path = install_parser_model(settings.model_dir)
     console.print(f"[green]OK[/green] {path.name}  sha256={file_sha256(path)}")
 
 
@@ -144,6 +214,12 @@ def model_status() -> None:
     failed = failed or not valid
     status = "[green]OK[/green]" if valid else "[red]FAIL[/red]"
     console.print(f"{status} {SSCD.filename}: {actual}")
+    path = settings.model_dir / PARSER_FILENAME
+    actual = file_sha256(path) if path.exists() else "missing"
+    valid = actual == PARSER_SHA256
+    failed = failed or not valid
+    status = "[green]OK[/green]" if valid else "[red]FAIL[/red]"
+    console.print(f"{status} {PARSER_FILENAME}: {actual}")
     if failed:
         raise typer.Exit(1)
 
@@ -205,10 +281,20 @@ def doctor() -> None:
             if (settings.model_dir / SSCD.filename).exists()
             else False
         ),
+        "Face parser pinned": (
+            file_sha256(settings.model_dir / PARSER_FILENAME) == PARSER_SHA256
+            if (settings.model_dir / PARSER_FILENAME).exists()
+            else False
+        ),
+        "Face parser loads and infers in OpenCV": _parser_loads(settings),
         "FAISS runtime": _module_available("faiss"),
         "PyTorch runtime": _module_available("torch"),
         "Mastodon HTTPS source configured": settings.mastodon_instance.startswith("https://"),
         "Shared Mastodon hashtag configured": bool(settings.mastodon_tag),
+        "Authorized Mastodon accounts configured": bool(settings.mastodon_allowed_accounts),
+        "Private-media retention policy specified": (
+            settings.private_media_retention_policy != "UNSPECIFIED"
+        ),
         "Ethereum RPC configured": bool(settings.rpc_url),
         "Signer configured": settings.signer_mode == "unlocked" or bool(settings.private_key),
     }
@@ -225,6 +311,19 @@ def doctor() -> None:
 def _model_is_valid(model_dir: Path, spec: ModelSpec) -> bool:
     path = model_dir / spec.filename
     return path.exists() and _file_sha256(path) == spec.sha256
+
+
+def _parser_loads(settings: Settings) -> bool:
+    try:
+        engine = FaceEngine(settings.model_dir, detection_threshold=settings.detection_threshold)
+        parser = FaceParser(settings.model_dir, engine.cv2)
+        fixture = Path(__file__).with_name("fixtures") / "query.png"
+        image = engine.decode(fixture.read_bytes())
+        face = engine.require_single_query_face(image)
+        result = parser.parse(image, face)
+        return result.semantic_mask is not None and result.semantic_mask.ndim == 2
+    except FaceProofError:
+        return False
 
 
 def _module_available(name: str) -> bool:
@@ -348,9 +447,122 @@ def calibrate_copy_threshold(
     )
 
 
+@app.command("evaluate-manifest")
+def evaluate_manifest(
+    manifest: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
+    policy: Annotated[Path, typer.Option("--policy", exists=True, dir_okay=False)],
+    split: Annotated[str, typer.Option("--split")] = "test",
+    output: Annotated[Path, typer.Option("--output", "-o")] = Path("evaluation.json"),
+    mode: Annotated[str, typer.Option("--mode")] = "dual-quality",
+) -> None:
+    """Run the actual exhaustive pipeline over one identity-disjoint manifest split."""
+    settings = _settings()
+    dataset = load_manifest(manifest)
+    if mode not in {"baseline", "dual", "dual-quality"}:
+        raise typer.BadParameter("mode must be baseline, dual, or dual-quality")
+    source = ManifestMediaSource(dataset, split)
+    pipeline = _pipeline(
+        settings,
+        manifest=manifest,
+        policy_path=policy,
+        source_override=source,
+        fetcher_override=ManifestImageFetcher(dataset),
+        enable_copy=mode != "baseline",
+        enable_quality=mode == "dual-quality",
+    )
+    report = run_manifest_evaluation(
+        dataset, pipeline, split=split, output=output.resolve()
+    )
+    console.print_json(json.dumps(report["metrics"], ensure_ascii=False))
+    console.print(f"[green]Evaluation report:[/green] {output.resolve()}")
+
+
+@app.command("compare-manifest")
+def compare_manifest(
+    manifest: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
+    policy: Annotated[Path, typer.Option("--policy", exists=True, dir_okay=False)],
+    split: Annotated[str, typer.Option("--split")] = "test",
+    output_dir: Annotated[Path, typer.Option("--output-dir")] = Path("comparison"),
+) -> None:
+    """Run baseline, dual, and dual-plus-quality through the same frozen manifest."""
+    settings = _settings()
+    dataset = load_manifest(manifest)
+    destination = output_dir.resolve()
+    for mode in ("baseline", "dual", "dual-quality"):
+        pipeline = _pipeline(
+            settings,
+            manifest=manifest,
+            policy_path=policy,
+            source_override=ManifestMediaSource(dataset, split),
+            fetcher_override=ManifestImageFetcher(dataset),
+            enable_copy=mode != "baseline",
+            enable_quality=mode == "dual-quality",
+        )
+        output = destination / f"{split}-{mode}.json"
+        report = run_manifest_evaluation(
+            dataset, pipeline, split=split, output=output
+        )
+        report["comparison_mode"] = mode
+        write_json(output, report)
+        console.print(f"[green]{mode}:[/green] {output}")
+
+
+@app.command("freeze-policy")
+def freeze_policy_command(
+    calibration_report: Annotated[Path, typer.Argument(exists=True, dir_okay=False)],
+    test_report: Annotated[
+        Path | None, typer.Option("--test-report", exists=True, dir_okay=False)
+    ] = None,
+    output: Annotated[Path, typer.Option("--output", "-o")] = Path("policy.json"),
+    max_gallery_media: Annotated[int, typer.Option("--max-gallery-media")] = 200,
+    max_enrollment_references: Annotated[int, typer.Option("--max-enrollment-references")] = 8,
+    max_copy_references: Annotated[int, typer.Option("--max-copy-references")] = 8,
+) -> None:
+    """Freeze calibrated operating limits and immutable report/model hashes."""
+    settings = _settings()
+    freeze_policy(
+        calibration_report,
+        test_report,
+        project_root=settings.project_root,
+        output=output.resolve(),
+        max_gallery_media=max_gallery_media,
+        max_enrollment_references=max_enrollment_references,
+        max_copy_references=max_copy_references,
+    )
+    console.print(f"[green]Frozen policy:[/green] {output.resolve()}")
+
+
+@app.command("calibrate-manifest-report")
+def calibrate_manifest_report(
+    evaluation: Annotated[Path, typer.Argument(exists=True, dir_okay=False)],
+    policy_id: Annotated[str, typer.Option("--policy-id")],
+    output: Annotated[Path, typer.Option("--output", "-o")] = Path(
+        "calibration-decision.json"
+    ),
+    fpir_upper_target: Annotated[float, typer.Option("--fpir-upper-target")] = 0.01,
+    tpir_lower_target: Annotated[float, typer.Option("--tpir-lower-target")] = 0.90,
+) -> None:
+    """Freeze thresholds from a calibration-split pipeline report, never test data."""
+    calibrate_from_evaluation(
+        evaluation,
+        output.resolve(),
+        policy_id=policy_id,
+        fpir_upper_target=fpir_upper_target,
+        tpir_lower_target=tpir_lower_target,
+    )
+    console.print(f"[green]Frozen calibration decision:[/green] {output.resolve()}")
+
+
 @app.command()
 def discover(
     image: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
+    copy_reference: Annotated[
+        list[Path],
+        typer.Option("--copy-reference", help="Explicit original image to search for copies."),
+    ],
+    manifest: Annotated[Path, typer.Option("--manifest", exists=True, dir_okay=False)],
+    face_index: Annotated[list[int] | None, typer.Option("--face-index")] = None,
+    policy: Annotated[Path | None, typer.Option("--policy", dir_okay=False)] = None,
     i_have_consent: Annotated[
         bool,
         typer.Option(
@@ -364,8 +576,14 @@ def discover(
 ) -> None:
     """Detect one face, search public media, verify locally, and write evidence."""
     settings = _settings()
-    bundle, evidence_path = _pipeline(settings, instance=instance, tag=tag).discover(
-        image, consent_asserted=i_have_consent, output_path=output
+    bundle, evidence_path = _pipeline(
+        settings, instance=instance, tag=tag, manifest=manifest, policy_path=policy
+    ).discover(
+        image,
+        copy_reference_paths=copy_reference,
+        enrollment_face_indices=face_index,
+        consent_asserted=i_have_consent,
+        output_path=output,
     )
     _show_match(bundle.to_dict())
     console.print(f"[green]Evidence written:[/green] {evidence_path}")
@@ -378,14 +596,19 @@ def discover(
 def anchor(
     evidence: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
     output: Annotated[Path | None, typer.Option("--output", "-o")] = None,
+    allow_public_testnet: Annotated[
+        bool, typer.Option("--allow-public-testnet")
+    ] = False,
 ) -> None:
-    """Write an evidence digest to Ethereum transaction calldata and save its receipt."""
+    """Store a finalized evidence digest in the pinned registry and save its receipt."""
     value = read_json(evidence)
     if bool((value.get("match") or {}).get("ambiguous")):
         raise NoVerifiedMatch("refusing to anchor an ambiguous match")
     settings = _settings()
     destination = output or evidence.with_name("anchor.json")
-    receipt = EthereumAnchor(settings).anchor(evidence, destination)
+    receipt = EthereumAnchor(settings).anchor(
+        evidence, destination, allow_public_testnet=allow_public_testnet
+    )
     location = receipt.explorer_url or f"RPC chain {receipt.chain_id}"
     console.print(
         Panel.fit(
@@ -395,6 +618,27 @@ def anchor(
         )
     )
     console.print(f"Receipt written: {destination}")
+
+
+@app.command("finalize-evidence")
+def finalize_evidence_command(
+    draft: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
+    reviewer: Annotated[str, typer.Option("--reviewer")],
+    confirm_claim: Annotated[list[str], typer.Option("--confirm-claim")],
+    notes: Annotated[str, typer.Option("--notes")] = "",
+    output: Annotated[Path | None, typer.Option("--output", "-o")] = None,
+) -> None:
+    """Seal a human-reviewed evidence draft into exact immutable bytes."""
+    destination = output or draft.with_name("evidence.final.json")
+    finalize_evidence(
+        draft,
+        destination,
+        reviewer=reviewer,
+        confirmed_claims=confirm_claim,
+        notes=notes,
+    )
+    console.print(f"[green]Final evidence:[/green] {destination}")
+    console.print(f"[green]Domain-separated SHA-256:[/green] {evidence_file_digest(destination)}")
 
 
 @app.command()
@@ -411,6 +655,8 @@ def verify(
         table.add_row(
             name.replace("_", " "), "[green]PASS[/green]" if passed else "[red]FAIL[/red]"
         )
+    for name, status in report.reproduction.items():
+        table.add_row(f"reproduction: {name.replace('_', ' ')}", status)
     console.print(table)
     console.print(
         Panel.fit(
@@ -424,15 +670,28 @@ def verify(
 @app.command()
 def run(
     image: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
+    copy_reference: Annotated[list[Path], typer.Option("--copy-reference")],
+    manifest: Annotated[Path, typer.Option("--manifest", exists=True, dir_okay=False)],
+    reviewer: Annotated[str, typer.Option("--reviewer")],
+    face_index: Annotated[list[int] | None, typer.Option("--face-index")] = None,
+    policy: Annotated[Path | None, typer.Option("--policy", dir_okay=False)] = None,
     i_have_consent: Annotated[bool, typer.Option("--i-have-consent")] = False,
     yes: Annotated[bool, typer.Option("--yes", "-y")] = False,
+    allow_public_testnet: Annotated[
+        bool, typer.Option("--allow-public-testnet")
+    ] = False,
     instance: Annotated[str | None, typer.Option(help="Mastodon HTTPS origin.")] = None,
     tag: Annotated[str | None, typer.Option(help="Optional hashtag without #.")] = None,
 ) -> None:
     """Run face scan -> live post discovery -> chain anchor -> verification."""
     settings = _settings()
-    bundle, evidence_path = _pipeline(settings, instance=instance, tag=tag).discover(
-        image, consent_asserted=i_have_consent
+    bundle, evidence_path = _pipeline(
+        settings, instance=instance, tag=tag, manifest=manifest, policy_path=policy
+    ).discover(
+        image,
+        copy_reference_paths=copy_reference,
+        enrollment_face_indices=face_index,
+        consent_asserted=i_have_consent,
     )
     bundle_dict = bundle.to_dict()
     _show_match(bundle_dict)
@@ -442,10 +701,20 @@ def run(
         console.print(f"Evidence preserved without blockchain write: {evidence_path}")
         raise typer.Exit()
 
+    final_path = evidence_path.with_name("evidence.final.json")
+    finalize_evidence(
+        evidence_path,
+        final_path,
+        reviewer=reviewer,
+        confirmed_claims=list(bundle.claims["reviewable_claims"]),
+        notes="confirmed interactively by the named reviewer",
+    )
     receipt_path = evidence_path.with_name("anchor.json")
     anchor_client = EthereumAnchor(settings)
-    receipt = anchor_client.anchor(evidence_path, receipt_path)
-    report = anchor_client.verify(evidence_path, receipt_path)
+    receipt = anchor_client.anchor(
+        final_path, receipt_path, allow_public_testnet=allow_public_testnet
+    )
+    report = anchor_client.verify(final_path, receipt_path)
     console.print(
         Panel.fit(
             "\n".join(

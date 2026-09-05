@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -17,6 +18,7 @@ class BoundingBox:
 class FaceObservation:
     box: BoundingBox
     embedding: Any = field(repr=False, compare=False)
+    landmarks: tuple[tuple[float, float], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +35,14 @@ class SearchHit:
     preview_url: str
     image_width: int | None
     image_height: int | None
+    wrapper_post_id: str | None = None
+    wrapper_canonical_uri: str | None = None
+
+    @property
+    def occurrence_key(self) -> str:
+        return hashlib.sha256(
+            self.post_id.encode("utf-8") + b"\x00" + self.media_id.encode("utf-8")
+        ).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +63,10 @@ class FeatureMatch:
     good_matches: int
     inliers: int
     inlier_ratio: float
+    reprojection_error: float | None = None
+    source_coverage: float = 0.0
+    candidate_coverage: float = 0.0
+    homography: tuple[float, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,11 +92,21 @@ class VerifiedMatch:
     face_retrieval_rank: int | None
     copy_retrieval_rank: int | None
     phash_retrieval_rank: int | None
+    face_state: str
+    copy_state: str
+    face_assessable: bool
+    identity_reference_index: int | None
+    copy_reference_index: int | None
+    candidate_quality: dict[str, Any] | None
+    candidate_consent_ref: str | None
+    source_candidate_association: dict[str, Any]
+    candidate_fetched_at: str | None
 
 
 @dataclass(frozen=True, slots=True)
 class EvidenceBundle:
     schema: str
+    status: str
     created_at: str
     run_id: str
     consent: dict[str, Any]
@@ -90,6 +114,9 @@ class EvidenceBundle:
     search: dict[str, Any]
     match: dict[str, Any]
     claims: dict[str, Any]
+    provenance: dict[str, Any]
+    human_review: dict[str, Any] | None
+    nonce_hex: str | None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -106,6 +133,8 @@ class AnchorReceipt:
     block_hash: str
     sender: str
     recipient: str
+    contract_code_sha256: str
+    commitment_log_topic: str
     explorer_url: str | None
 
     def to_dict(self) -> dict[str, Any]:
@@ -121,3 +150,4 @@ class VerificationReport:
     block_number: int
     confirmations: int
     checks: dict[str, bool]
+    reproduction: dict[str, str] = field(default_factory=dict)

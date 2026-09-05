@@ -130,7 +130,7 @@ class SSCDDescriptorEngine:
     def _tensor(self, image: Any) -> Any:
         if image is None or getattr(image, "size", 0) == 0:
             raise FaceInputError("cannot compute SSCD descriptor for an empty image")
-        resized = self.cv2.resize(image, (320, 320), interpolation=self.cv2.INTER_AREA)
+        resized = self.cv2.resize(image, (320, 320), interpolation=self.cv2.INTER_LINEAR)
         rgb = self.cv2.cvtColor(resized, self.cv2.COLOR_BGR2RGB)
         tensor = self.torch.from_numpy(np.ascontiguousarray(rgb)).permute(2, 0, 1)
         return tensor.to(device=self.device, dtype=self.torch.float32).div_(255.0)
@@ -154,9 +154,12 @@ class SSCDDescriptorEngine:
                     raise FaceInputError(
                         f"SSCD returned {output.shape[1]} dimensions, expected {self.dimensions}"
                     )
-                descriptors.extend(
-                    np.asarray(row, dtype=np.float32) for row in output.detach().cpu().numpy()
-                )
+                rows = output.detach().cpu().numpy()
+                if not np.all(np.isfinite(rows)):
+                    raise FaceInputError("SSCD returned a non-finite descriptor")
+                if not np.allclose(np.linalg.norm(rows, axis=1), 1.0, atol=1e-4):
+                    raise FaceInputError("SSCD returned a non-normalized descriptor")
+                descriptors.extend(np.asarray(row, dtype=np.float32) for row in rows)
         return descriptors
 
 

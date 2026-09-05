@@ -135,3 +135,60 @@ def test_public_timeline_policy_failure_is_actionable_and_not_retried() -> None:
         with pytest.raises(SearchError, match="configure FACEPROOF_MASTODON_TAG"):
             source.discover()
     assert calls == 1
+
+
+def test_authorized_multi_post_pagination_boosts_and_multi_image() -> None:
+    calls: list[str | None] = []
+
+    def status(identifier: str, account: str, media_count: int, *, reblog: bool = False) -> dict:
+        actual = {
+            "id": identifier,
+            "uri": f"https://social.example/users/{account}/statuses/{identifier}",
+            "url": f"https://social.example/@{account}/{identifier}",
+            "visibility": "public",
+            "created_at": "2026-09-05T00:00:00Z",
+            "content": "<p>authorized demo</p>",
+            "account": {"id": f"id-{account}", "acct": account},
+            "media_attachments": [
+                {
+                    "id": f"{identifier}-m{index}",
+                    "type": "image",
+                    "url": f"https://social.example/media/{identifier}-{index}.jpg",
+                    "preview_url": f"https://social.example/media/{identifier}-{index}-p.jpg",
+                }
+                for index in range(media_count)
+            ],
+        }
+        if not reblog:
+            return actual
+        return {
+            "id": f"boost-{identifier}",
+            "uri": f"https://social.example/boost/{identifier}",
+            "reblog": actual,
+        }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        max_id = request.url.params.get("max_id")
+        calls.append(max_id)
+        if max_id is None:
+            return httpx.Response(200, json=[status("3", "alice", 2), status("2", "mallory", 1)])
+        if max_id == "2":
+            return httpx.Response(200, json=[status("1", "alice", 1, reblog=True)])
+        return httpx.Response(200, json=[])
+
+    with _client(handler) as client:
+        batch = MastodonMediaSource(
+            instance="https://social.example",
+            tag="demo",
+            max_pages=3,
+            page_size=2,
+            max_media=10,
+            timeout_s=1,
+            allowed_accounts=frozenset({"alice"}),
+            client=client,
+        ).discover()
+
+    assert calls == [None, "2"]
+    assert [hit.media_id for hit in batch.hits] == ["3-m0", "3-m1", "1-m0"]
+    assert batch.hits[-1].wrapper_post_id == "boost-1"
+    assert batch.hits[-1].post_id == "1"

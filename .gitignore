@@ -19,5 +19,6 @@ copy-calibration.json
 demo-input/
 models/*.onnx
 models/*.pt
+models/*.obj
 credentials*.json
 service-account*.json

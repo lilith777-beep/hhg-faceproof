@@ -49,6 +49,7 @@ class MastodonMediaSource:
         page_size: int,
         max_media: int,
         timeout_s: float,
+        allowed_accounts: frozenset[str] | None = None,
         client: httpx.Client | None = None,
     ) -> None:
         instance = instance.rstrip("/")
@@ -61,6 +62,7 @@ class MastodonMediaSource:
         self.max_pages = max_pages
         self.page_size = page_size
         self.max_media = max_media
+        self.allowed_accounts = allowed_accounts
         self.client = client or httpx.Client(
             timeout=timeout_s,
             follow_redirects=False,
@@ -142,6 +144,15 @@ class MastodonMediaSource:
                     if not isinstance(status, dict) or status.get("visibility") != "public":
                         continue
                     account = status.get("account") or {}
+                    account_keys = {
+                        str(account.get("id") or ""),
+                        str(account.get("acct") or "").lower(),
+                        str(account.get("username") or "").lower(),
+                    }
+                    if self.allowed_accounts and not (
+                        account_keys & {value.lower() for value in self.allowed_accounts}
+                    ):
+                        continue
                     for media in status.get("media_attachments") or []:
                         if not isinstance(media, dict) or media.get("type") != "image":
                             continue
@@ -172,6 +183,16 @@ class MastodonMediaSource:
                                 preview_url=preview_url,
                                 image_width=_optional_int(original_meta.get("width")),
                                 image_height=_optional_int(original_meta.get("height")),
+                                wrapper_post_id=(
+                                    str(wrapper.get("id") or "")
+                                    if wrapper is not status
+                                    else None
+                                ),
+                                wrapper_canonical_uri=(
+                                    str(wrapper.get("uri") or wrapper.get("url") or "")
+                                    if wrapper is not status
+                                    else None
+                                ),
                             )
                         )
                         if len(hits) >= self.max_media:
