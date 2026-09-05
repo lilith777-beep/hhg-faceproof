@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/BlueBlaze6335/faceproof/schema/evidence-v1.schema.json",
+  "$id": "https://github.com/BlueBlaze6335/hhg-faceproof/schema/evidence-v1.schema.json",
   "title": "FaceProof evidence bundle v1",
   "type": "object",
   "required": ["schema", "created_at", "run_id", "consent", "query", "search", "match", "claims"],
@@ -19,7 +19,7 @@
     },
     "query": {
       "type": "object",
-      "required": ["image_sha256", "face_count", "detector", "encoder", "embedding_persisted"],
+      "required": ["image_sha256", "face_count", "detector", "encoder", "embedding_persisted", "copy_descriptor", "runtime"],
       "properties": {
         "image_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
         "face_count": { "const": 1 },
@@ -28,10 +28,13 @@
     },
     "search": {
       "type": "object",
-      "required": ["provider", "live_query", "scope", "endpoint", "provider_fetched_at", "statuses_scanned", "media_discovered"],
+      "required": ["provider", "live_query", "scope", "endpoint", "provider_fetched_at", "statuses_scanned", "media_discovered", "vector_backend"],
       "properties": {
-        "provider": { "const": "mastodon-public-api" },
-        "live_query": { "const": true },
+        "provider": {
+          "enum": ["mastodon-public-api", "synthetic-placeholder-source"]
+        },
+        "live_query": { "type": "boolean" },
+        "vector_backend": { "enum": ["faiss.IndexFlatIP", "legacy-sort"] },
         "endpoint": { "type": "string", "format": "uri" },
         "provider_fetched_at": { "type": "string", "format": "date-time" },
         "statuses_scanned": { "type": "integer", "minimum": 0 },
@@ -40,19 +43,51 @@
     },
     "match": {
       "type": "object",
-      "required": ["post_url", "canonical_uri", "post_id", "media_id", "candidate_image_sha256", "face_similarity", "face_threshold", "same_content", "ambiguous", "human_confirmation_required"],
+      "required": ["post_url", "canonical_uri", "post_id", "media_id", "candidate_image_sha256", "face_similarity", "face_threshold", "face_match", "sscd_similarity", "sscd_match", "content_signals", "same_content", "decision", "retrieval_channels", "ambiguous", "human_confirmation_required"],
       "properties": {
         "post_url": { "type": "string", "format": "uri" },
         "canonical_uri": { "type": "string", "format": "uri" },
         "candidate_image_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
         "face_similarity": { "type": "number", "minimum": -1, "maximum": 1 },
         "face_threshold": { "type": "number", "minimum": 0, "maximum": 1 },
+        "face_match": { "type": "boolean" },
+        "sscd_similarity": { "type": ["number", "null"], "minimum": -1, "maximum": 1 },
+        "sscd_match": { "type": "boolean" },
+        "content_signals": { "type": "object" },
         "same_content": { "type": "boolean" },
+        "decision": {
+          "enum": ["same_identity_and_content", "same_identity_different_content", "copy_face_conflict", "rejected"]
+        },
+        "retrieval_channels": { "type": "array", "items": { "type": "string" } },
         "ambiguous": { "type": "boolean" },
         "human_confirmation_required": { "const": true }
       }
     },
     "claims": { "type": "object" }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "search": { "properties": { "live_query": { "const": true } } } }
+      },
+      "then": {
+        "properties": {
+          "search": { "properties": { "provider": { "const": "mastodon-public-api" } } }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "search": {
+            "properties": { "provider": { "const": "synthetic-placeholder-source" } }
+          }
+        }
+      },
+      "then": {
+        "properties": { "search": { "properties": { "live_query": { "const": false } } } }
+      }
+    }
+  ],
   "additionalProperties": false
 }

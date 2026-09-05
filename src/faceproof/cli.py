@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 from pathlib import Path
 from typing import Annotated
 
@@ -12,10 +11,17 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from .acceptance import run_chain_acceptance, run_placeholder_acceptance
-from .calibration import calibrate
+from .acceptance import _local_anvil_path, run_chain_acceptance, run_placeholder_acceptance
+from .calibration import calibrate, calibrate_copy
 from .chain import EthereumAnchor
 from .config import Settings
+from .copydetect import (
+    SSCD,
+    SSCDDescriptorEngine,
+    file_sha256,
+    install_sscd_model,
+    load_sscd_engine,
+)
 from .errors import FaceProofError, NoVerifiedMatch
 from .faces import MODEL_SPECS, FaceEngine, ModelSpec, _file_sha256, download_models
 from .integrity import evidence_digest, read_json
@@ -69,8 +75,24 @@ def _pipeline(
             max_bytes=settings.max_image_bytes,
             max_redirects=settings.max_redirects,
         ),
+        copy_engine=_copy_engine(settings),
         progress=lambda message: console.print(f"[cyan]->[/cyan] {message}"),
     )
+
+
+def _copy_engine(settings: Settings) -> SSCDDescriptorEngine | None:
+    engine = load_sscd_engine(
+        settings.model_dir,
+        mode=settings.sscd_mode,
+        device=settings.sscd_device,
+        batch_size=settings.sscd_batch_size,
+    )
+    if engine is None and settings.sscd_mode != "off":
+        console.print(
+            "[yellow]SSCD unavailable; continuing with the legacy face/pHash path. "
+            "Install the vision extra and models for the production ensemble.[/yellow]"
+        )
+    return engine
 
 
 def _show_match(bundle: dict) -> None:
@@ -83,6 +105,11 @@ def _show_match(bundle: dict) -> None:
     table.add_row("Canonical URI", str(match["canonical_uri"]))
     table.add_row("Face similarity", f"{float(match['face_similarity']):.3f}")
     table.add_row("Threshold", f"{float(match['face_threshold']):.3f}")
+    table.add_row("Face match", str(bool(match.get("face_match", True))))
+    if match.get("sscd_similarity") is not None:
+        table.add_row("SSCD similarity", f"{float(match['sscd_similarity']):.3f}")
+        table.add_row("SSCD threshold", f"{float(match['sscd_threshold']):.3f}")
+    table.add_row("Decision", str(match.get("decision", "legacy_face_match")))
     table.add_row("Same image/content", str(bool(match["same_content"])))
     table.add_row("Ambiguous", str(bool(match["ambiguous"])))
     table.add_row("Image SHA-256", str(match["candidate_image_sha256"]))
@@ -91,10 +118,12 @@ def _show_match(bundle: dict) -> None:
 
 @models_app.command("install")
 def install_models() -> None:
-    """Download pinned YuNet/SFace binaries and verify their checksums."""
+    """Download pinned YuNet/SFace/SSCD binaries and verify their checksums."""
     settings = _settings()
     for path in download_models(settings.model_dir):
         console.print(f"[green]OK[/green] {path.name}  sha256={_file_sha256(path)}")
+    path = install_sscd_model(settings.model_dir)
+    console.print(f"[green]OK[/green] {path.name}  sha256={file_sha256(path)}")
 
 
 @models_app.command("status")
@@ -109,6 +138,12 @@ def model_status() -> None:
         failed = failed or not valid
         status = "[green]OK[/green]" if valid else "[red]FAIL[/red]"
         console.print(f"{status} {spec.filename}: {actual}")
+    path = settings.model_dir / SSCD.filename
+    actual = file_sha256(path) if path.exists() else "missing"
+    valid = actual == SSCD.sha256
+    failed = failed or not valid
+    status = "[green]OK[/green]" if valid else "[red]FAIL[/red]"
+    console.print(f"{status} {SSCD.filename}: {actual}")
     if failed:
         raise typer.Exit(1)
 
@@ -150,7 +185,7 @@ def chain_status() -> None:
     table = Table(title="Blockchain verifier")
     table.add_column("Check")
     table.add_column("State")
-    table.add_row("Anvil executable", shutil.which("anvil") or "not on PATH")
+    table.add_row("Anvil executable", _local_anvil_path(settings) or "not found")
     table.add_row("RPC", settings.rpc_url or "not configured")
     table.add_row("Expected chain", str(settings.expected_chain_id))
     table.add_row("Actual chain", actual_chain)
@@ -165,7 +200,15 @@ def doctor() -> None:
     checks = {
         "YuNet model pinned": _model_is_valid(settings.model_dir, MODEL_SPECS[0]),
         "SFace model pinned": _model_is_valid(settings.model_dir, MODEL_SPECS[1]),
+        "SSCD model pinned": (
+            file_sha256(settings.model_dir / SSCD.filename) == SSCD.sha256
+            if (settings.model_dir / SSCD.filename).exists()
+            else False
+        ),
+        "FAISS runtime": _module_available("faiss"),
+        "PyTorch runtime": _module_available("torch"),
         "Mastodon HTTPS source configured": settings.mastodon_instance.startswith("https://"),
+        "Shared Mastodon hashtag configured": bool(settings.mastodon_tag),
         "Ethereum RPC configured": bool(settings.rpc_url),
         "Signer configured": settings.signer_mode == "unlocked" or bool(settings.private_key),
     }
@@ -182,6 +225,12 @@ def doctor() -> None:
 def _model_is_valid(model_dir: Path, spec: ModelSpec) -> bool:
     path = model_dir / spec.filename
     return path.exists() and _file_sha256(path) == spec.sha256
+
+
+def _module_available(name: str) -> bool:
+    import importlib.util
+
+    return importlib.util.find_spec(name) is not None
 
 
 @app.command()
@@ -214,6 +263,12 @@ def acceptance(
         f"negative {biometric['negative_score']:.3f} | "
         f"threshold {biometric['threshold']:.3f}"
     )
+    if biometric.get("sscd_positive_score") is not None:
+        console.print(
+            f"SSCD positive {biometric['sscd_positive_score']:.3f} | "
+            f"negative {biometric['sscd_negative_score']:.3f} | "
+            "retrieval FAISS exact cosine"
+        )
     console.print(f"Evidence: {biometric['evidence_path']}")
     if chain_result:
         console.print(f"Transaction: {chain_result['transaction_hash']}")
@@ -249,6 +304,46 @@ def calibrate_threshold(
             f"Report: {output.resolve()}\n\n"
             "Set FACEPROOF_FACE_THRESHOLD to the recommendation only after reviewing samples.",
             title="Face threshold calibration",
+        )
+    )
+
+
+@app.command("calibrate-copy")
+def calibrate_copy_threshold(
+    reference: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
+    positives: Annotated[Path, typer.Argument(exists=True, file_okay=False, readable=True)],
+    negatives: Annotated[Path, typer.Argument(exists=True, file_okay=False, readable=True)],
+    output: Annotated[Path, typer.Option("--output", "-o")] = Path("copy-calibration.json"),
+) -> None:
+    """Measure SSCD on derived-copy positives and unrelated-image negatives."""
+    settings = _settings()
+    face_engine = FaceEngine(settings.model_dir, detection_threshold=settings.detection_threshold)
+    copy_engine = load_sscd_engine(
+        settings.model_dir,
+        mode="required",
+        device=settings.sscd_device,
+        batch_size=settings.sscd_batch_size,
+    )
+    if copy_engine is None:  # pragma: no cover - required mode always raises instead
+        raise NoVerifiedMatch("SSCD is required for copy calibration")
+    report = calibrate_copy(
+        copy_engine,
+        face_engine.decode,
+        reference,
+        positives,
+        negatives,
+        output.resolve(),
+    )
+    metrics = report["metrics"]
+    console.print(
+        Panel.fit(
+            f"Recommended SSCD threshold: {report['recommended_threshold']}\n"
+            f"Balanced accuracy: {metrics['balanced_accuracy']:.3f}\n"
+            f"False accept rate: {metrics['false_accept_rate']:.3f}\n"
+            f"False reject rate: {metrics['false_reject_rate']:.3f}\n"
+            f"Report: {output.resolve()}\n\n"
+            "Only adopt this threshold after held-out transform evaluation.",
+            title="Copy threshold calibration",
         )
     )
 

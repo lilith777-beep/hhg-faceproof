@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
+from .copydetect import CopyDescriptorEngine
 from .errors import FaceInputError
 from .faces import FaceEngine
 from .integrity import write_json
@@ -116,6 +120,69 @@ def calibrate(
         },
         "warning": (
             "This threshold is specific to this validation set; human review remains required."
+        ),
+    }
+    write_json(output, report)
+    return report
+
+
+def calibrate_copy(
+    engine: CopyDescriptorEngine,
+    decode: Callable[[bytes], Any],
+    reference: Path,
+    positives: Path,
+    negatives: Path,
+    output: Path,
+) -> dict[str, Any]:
+    """Calibrate copy similarity from derived copies and unrelated-image negatives."""
+    positive_paths = _paths(positives)
+    negative_paths = _paths(negatives)
+    reference_bytes = reference.read_bytes()
+    all_paths = positive_paths + negative_paths
+    contents = [path.read_bytes() for path in all_paths]
+    reference_descriptor = engine.encode(decode(reference_bytes))
+    descriptors = engine.encode_many([decode(content) for content in contents])
+    scores = [float(np.dot(reference_descriptor, descriptor)) for descriptor in descriptors]
+    positive_scores = scores[: len(positive_paths)]
+    negative_scores = scores[len(positive_paths) :]
+    result = choose_threshold(positive_scores, negative_scores)
+
+    def rows(paths: list[Path], row_scores: list[float], offset: int) -> list[dict[str, Any]]:
+        return [
+            {
+                "filename": path.name,
+                "score": round(score, 6),
+                "sha256": hashlib.sha256(contents[offset + index]).hexdigest(),
+            }
+            for index, (path, score) in enumerate(zip(paths, row_scores, strict=True))
+        ]
+
+    report: dict[str, Any] = {
+        "schema": "faceproof.copy-calibration.v1",
+        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "model": engine.model_id,
+        "model_sha256": engine.model_sha256,
+        "dimensions": engine.dimensions,
+        "reference_sha256": hashlib.sha256(reference_bytes).hexdigest(),
+        "positive_definition": "transformed or recompressed copies of the reference image",
+        "negative_definition": "unrelated images, including visually similar hard negatives",
+        "positive_count": len(positive_paths),
+        "negative_count": len(negative_paths),
+        "recommended_threshold": round(result.threshold, 6),
+        "metrics": {
+            "true_accept_rate": round(result.true_accept_rate, 6),
+            "true_reject_rate": round(result.true_reject_rate, 6),
+            "false_accept_rate": round(result.false_accept_rate, 6),
+            "false_reject_rate": round(result.false_reject_rate, 6),
+            "balanced_accuracy": round(result.balanced_accuracy, 6),
+        },
+        "samples": {
+            "positive": rows(positive_paths, positive_scores, 0),
+            "negative": rows(negative_paths, negative_scores, len(positive_paths)),
+        },
+        "warning": (
+            "Use held-out social-media transformations before changing the production threshold; "
+            "same-person photos are not copy-positive samples."
         ),
     }
     write_json(output, report)

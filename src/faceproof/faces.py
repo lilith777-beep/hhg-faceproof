@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -77,8 +78,12 @@ def download_models(model_dir: Path, *, timeout_s: float = 120.0) -> list[Path]:
 class FaceEngine:
     detector_id = "opencv-yunet-2023mar"
     encoder_id = "opencv-sface-2021dec"
+    detector_sha256 = YUNET.sha256
+    encoder_sha256 = SFACE.sha256
 
     def __init__(self, model_dir: Path, *, detection_threshold: float = 0.80) -> None:
+        # OpenCV checks this bound from image headers before allocating decoded pixels.
+        os.environ.setdefault("OPENCV_IO_MAX_IMAGE_PIXELS", "40000000")
         try:
             import cv2
         except ImportError as exc:  # pragma: no cover - dependency error is environment-specific

@@ -4,6 +4,9 @@ FaceProof processes biometric data. Use it only with explicit, informed consent 
 matching-content discovery—not identity inference, surveillance, access control, or high-impact
 decisions.
 
+Face and SSCD descriptors are biometric-derived data. FaceProof keeps them in memory and does not
+write them into evidence or blockchain calldata.
+
 Never commit `.env`, private keys, source/calibration photos, downloaded models, or the generated
 `artifacts/` directory. The default local Anvil keys are public development keys: never fund them
 with real assets and never expose Anvil outside localhost. If using the optional public-testnet

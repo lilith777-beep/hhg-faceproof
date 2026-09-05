@@ -12,8 +12,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+import numpy as np
+
 from .chain import EthereumAnchor
 from .config import Settings
+from .copydetect import load_sscd_engine
 from .errors import ChainError, VerificationError
 from .faces import FaceEngine
 from .integrity import write_json
@@ -87,6 +90,22 @@ def run_placeholder_acceptance(settings: Settings) -> dict[str, Any]:
     engine = FaceEngine(settings.model_dir, detection_threshold=settings.detection_threshold)
     positive_score = _score_fixture_pair(engine, fixture_dir, "same-person.png")
     negative_score = _score_fixture_pair(engine, fixture_dir, "different-person.png")
+    copy_engine = load_sscd_engine(
+        settings.model_dir,
+        mode=settings.sscd_mode,
+        device=settings.sscd_device,
+        batch_size=settings.sscd_batch_size,
+    )
+    sscd_positive_score: float | None = None
+    sscd_negative_score: float | None = None
+    if copy_engine is not None:
+        decoded = [
+            engine.decode((fixture_dir / name).read_bytes())
+            for name in ("query.png", "same-person.png", "different-person.png")
+        ]
+        query_copy, positive_copy, negative_copy = copy_engine.encode_many(decoded)
+        sscd_positive_score = float(np.dot(query_copy, positive_copy))
+        sscd_negative_score = float(np.dot(query_copy, negative_copy))
     output_dir = settings.artifact_dir / "acceptance"
     evidence_path = output_dir / "evidence.json"
     bundle, _ = DiscoveryPipeline(
@@ -94,6 +113,7 @@ def run_placeholder_acceptance(settings: Settings) -> dict[str, Any]:
         face_engine=engine,
         candidate_source=_FixtureSource(),
         image_fetcher=_FixtureFetcher(fixture_dir),
+        copy_engine=copy_engine,
     ).discover(
         fixture_dir / "query.png",
         consent_asserted=True,
@@ -106,6 +126,17 @@ def run_placeholder_acceptance(settings: Settings) -> dict[str, Any]:
         "positive_selected": bundle.match["post_id"] == "positive",
         "one_verified_match": bundle.match["verified_match_count"] == 1,
         "not_ambiguous": bundle.match["ambiguous"] is False,
+        "sscd_enabled": copy_engine is not None,
+        "sscd_separates_fixture": bool(
+            sscd_positive_score is not None
+            and sscd_negative_score is not None
+            and sscd_positive_score - sscd_negative_score >= 0.20
+        ),
+        "faiss_dual_retrieval": bool(
+            bundle.search["vector_backend"] == "faiss.IndexFlatIP"
+            and "face-faiss" in bundle.match["retrieval_channels"]
+            and "sscd-faiss" in bundle.match["retrieval_channels"]
+        ),
     }
     if not all(checks.values()):
         failed = ", ".join(name for name, passed in checks.items() if not passed)
@@ -113,6 +144,12 @@ def run_placeholder_acceptance(settings: Settings) -> dict[str, Any]:
     return {
         "positive_score": round(positive_score, 6),
         "negative_score": round(negative_score, 6),
+        "sscd_positive_score": (
+            round(sscd_positive_score, 6) if sscd_positive_score is not None else None
+        ),
+        "sscd_negative_score": (
+            round(sscd_negative_score, 6) if sscd_negative_score is not None else None
+        ),
         "threshold": settings.face_threshold,
         "selected_post_id": bundle.match["post_id"],
         "timings": bundle.search["timings"],

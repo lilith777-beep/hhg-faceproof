@@ -112,3 +112,26 @@ def test_rejects_non_origin_instance() -> None:
 
 def test_plain_text_removes_markup() -> None:
     assert _plain_text("<p>A<br>B &amp; C</p>") == "A B & C"
+
+
+def test_public_timeline_policy_failure_is_actionable_and_not_retried() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(422, json={"error": "public timeline disabled"})
+
+    with _client(handler) as client:
+        source = MastodonMediaSource(
+            instance="https://social.example",
+            tag=None,
+            max_pages=1,
+            page_size=40,
+            max_media=10,
+            timeout_s=1,
+            client=client,
+        )
+        with pytest.raises(SearchError, match="configure FACEPROOF_MASTODON_TAG"):
+            source.discover()
+    assert calls == 1

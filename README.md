@@ -5,8 +5,11 @@ FaceProof is a consent-first, zero-paid-service pipeline for **HH Goa 2026 Task 
 ```text
 one-face scan
   -> live public Mastodon media enumeration
-  -> preview face/image shortlist
-  -> full-resolution SFace + pHash + AKAZE verification
+  -> YuNet faces + SFace identity descriptors
+  -> SSCD copy descriptors
+  -> exact FAISS cosine retrieval on both descriptor spaces
+  -> full-resolution SFace + SSCD + pHash + AKAZE verification
+  -> explicit identity/content decision matrix + human confirmation
   -> canonical evidence SHA-256
   -> local Anvil Ethereum transaction
   -> independent transaction/block re-verification
@@ -34,11 +37,13 @@ only for connector diagnosis; do not use a one-result tag as the final search de
 | Task requirement | Implementation |
 |---|---|
 | Detect/encode face | OpenCV YuNet + SFace, run locally with pinned model checksums |
+| Copy detection | Meta SSCD DISC-Mixup descriptors, pinned by SHA-256 and run locally |
 | Genuine social search | Live Mastodon public/hashtag timeline API; no result URL in code/config |
-| Accuracy | Single-face/quality gate; preview-first SFace; full-resolution SFace; pHash and AKAZE content corroboration; top-candidate margin and ambiguity block |
+| Retrieval | Exact cosine search with FAISS `IndexFlatIP` over normalized SFace and SSCD vectors |
+| Accuracy | Single-face gate; dual retrieval; full-resolution re-verification; exact hash, SSCD, pHash and AKAZE/RANSAC corroboration; conflict and ambiguity blocks |
 | Blockchain upload | Versioned SHA-256 evidence payload in Ethereum-compatible transaction calldata |
 | Re-verification | Recompute digest, fetch transaction/receipt/block, verify payload, chain, status, block hash, sender, recipient, and confirmations |
-| No paid software | Python/OpenCV/Mastodon/Foundry Anvil; local chain is the default |
+| No paid software | Python/OpenCV/PyTorch/SSCD/FAISS/Mastodon/Foundry Anvil; local chain is the default |
 
 ## Quick start
 
@@ -48,7 +53,7 @@ Python 3.11 is the tested baseline.
 cd faceproof
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev,vision]"
 Copy-Item .env.example .env
 faceproof models install
 faceproof doctor
@@ -126,15 +131,22 @@ calldata.
 
 FaceProof deliberately separates two claims:
 
-1. **Same face:** SFace cosine similarity exceeds the configured threshold.
-2. **Same visual content:** exact SHA-256, close DCT perceptual hash, or sufficient AKAZE/RANSAC
-   geometric inliers corroborate that the post contains the same/derived image.
+1. **Same identity:** SFace cosine similarity exceeds the configured face threshold.
+2. **Same/derived content:** exact SHA-256, SSCD cosine, close DCT perceptual hash, or sufficient
+   AKAZE/RANSAC geometric support corroborates the image relationship.
 
-Candidates are enumerated up to a configured bound, previewed concurrently, locally encoded, then
-only the best finalists are downloaded at full resolution. Ranking favors exact image, corroborated
-content, face score, geometric inlier ratio, and perceptual distance—in that order. If two
-uncorroborated faces are closer than the configured margin, the output is marked ambiguous and the
-blockchain write is blocked.
+Every bounded preview is encoded into both spaces. Two exact FAISS `IndexFlatIP` indexes retrieve
+the top face and top copy candidates independently; pHash adds a deterministic rescue lane. The
+union is downloaded at full resolution and every learned score is recomputed before a result can
+be selected. Copy similarity without a face match is recorded as `copy_face_conflict`, never as a
+person match. Near-tied faces are blocked unless content uniquely disambiguates them or both hits
+are the exact same remote asset.
+
+SSCD uses the official DISC-Mixup ResNet-50 TorchScript checkpoint, 320×320 RGB/ImageNet
+preprocessing, L2-normalized 512-dimensional descriptors, and cosine similarity. The default
+`FACEPROOF_SSCD_THRESHOLD=0.75` follows the upstream DISC guidance; it is not silently lowered to
+make the synthetic fixture pass. The fixture's derived edit is recovered by SFace + AKAZE while
+SSCD remains an independent measured signal.
 
 Face detection/encoding uses the decoded source image. AKAZE geometric corroboration is separately
 bounded to a 512-pixel working edge: the placeholder pair retained 35+ RANSAC inliers at a 0.44+
@@ -152,10 +164,23 @@ environment or the default. Human review remains mandatory.
 faceproof calibrate-threshold reference.jpg .\calibration\positive .\calibration\negative
 ```
 
-Use at least two other consenting images of the subject and five representative non-match faces.
+Use substantially more than the two-positive/five-negative smoke-test minimum. For a credible
+final report, include varied pose, lighting, crop, compression and occlusion, plus hard negatives
+that resemble the subject. Report sample counts and uncertainty; never call the bundled synthetic
+pair a population-level accuracy metric.
 The generated report contains only filenames, hashes, scores, measured error rates, and the
 recommended balanced-accuracy threshold—not embeddings or image bytes. Keep the calibration images
 outside Git.
+
+Calibrate copy detection separately. Copy positives must be transformations of the exact reference
+(resize, crop, recompression, overlays, screenshots), not merely other photos of the same person:
+
+```powershell
+faceproof calibrate-copy reference.jpg .\copy-calibration\positive .\copy-calibration\negative
+```
+
+Use unrelated and visually similar hard-negative images, then validate the chosen SSCD operating
+point on a held-out transform set before changing `FACEPROOF_SSCD_THRESHOLD`.
 
 YuNet detection uses `FACEPROOF_DETECTION_THRESHOLD=0.80`. The upstream demo commonly uses 0.90,
 but the placeholder acceptance set exposed false rejections at 0.90 (positive confidences 0.866 and
@@ -167,11 +192,12 @@ consented validation images before submission.
 
 `evidence.json` includes:
 
-- query image SHA-256/byte count, face box, pinned detector/encoder IDs;
+- query image SHA-256/byte count, face box, pinned detector/encoder/SSCD IDs and checksums;
 - live source endpoint/scope/time, page/status/media counts, bounded failures;
 - canonical post/media IDs, public URL, author handle, timestamp, text and text hash;
 - candidate image hash/type/retrieved URL, face count/index/box/score/threshold;
-- exact-image, pHash, AKAZE inliers, selection margin, ambiguity, and top candidates;
+- exact-image, SSCD, pHash, AKAZE inliers, dual-FAISS ranks/channels, decision, selection margin,
+  ambiguity, conflicts, runtime versions, timings, and top candidates;
 - explicit claims and non-claims.
 
 Failures preserve only a URL hash and error class. Evidence excludes original image bytes,
@@ -194,8 +220,9 @@ faceproof chain status
 ```
 
 The deterministic suite covers canonical hashing, tamper rejection, transaction/block checks,
-consent, mismatch rejection, source parsing/provenance, SSRF and download limits, preview/full
-selection, pHash stability, AKAZE transforms, configuration validation, and ambiguity metadata.
+consent, mismatch/conflict rejection, SSCD loading, exact FAISS ranking, source parsing/provenance,
+SSRF and download limits, preview/full selection, pHash stability, AKAZE transforms, configuration
+validation, evidence semantics, and ambiguity metadata.
 Mocked connector tests are never described as live search; `source probe` is the live integration
 gate.
 
@@ -217,6 +244,13 @@ Before recording:
 - Face matching is probabilistic and may vary with pose, light, occlusion, age, image quality, and
   population. SFace's packaged weight provenance/training-data documentation should be treated as a
   model-card limitation; do not claim demographic fairness without measuring it.
+- SSCD is a copy-detection model, not a face-recognition model. Its upstream repository is archived;
+  FaceProof pins the model checksum and keeps SFace identity verification as a separate mandatory
+  gate. CPU SSCD inference is accurate but slower; a compatible CUDA PyTorch build is recommended
+  for larger candidate sets.
+- There is no explicit face segmentation, pose normalization, liveness detection, or multi-view
+  identity ensemble yet. Those are research/calibration gaps, not hidden features. See
+  [`PIPELINE_CONTEXT.md`](PIPELINE_CONTEXT.md).
 - A unique hashtag is the reliable open-source demo path. Public firehose search is broader but can
   miss older content within the bounded scan.
 - A public post/image may disappear later. The chain still verifies the evidence hash, but this

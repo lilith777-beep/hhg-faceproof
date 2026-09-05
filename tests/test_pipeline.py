@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import hashlib
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
 import pytest
+from jsonschema import Draft202012Validator, FormatChecker
 
 from faceproof.config import Settings
 from faceproof.errors import ConsentRequired, NoVerifiedMatch
@@ -48,8 +51,29 @@ class FakeFaceEngine:
         return scores[index], index, candidates[index].box
 
 
+class FakeCopyEngine:
+    model_id = "fake-sscd"
+    model_sha256 = "f" * 64
+    dimensions = 2
+    device = "cpu"
+
+    @staticmethod
+    def encode(image: bytes) -> np.ndarray:
+        return FakeCopyEngine._descriptor(image)
+
+    @staticmethod
+    def encode_many(images: list[bytes]) -> list[np.ndarray]:
+        return [FakeCopyEngine._descriptor(image) for image in images]
+
+    @staticmethod
+    def _descriptor(image: bytes) -> np.ndarray:
+        if image in {b"query-image", b"matching-image"}:
+            return np.array([1.0, 0.0], dtype=np.float32)
+        return np.array([0.0, 1.0], dtype=np.float32)
+
+
 class FakeSource:
-    name = "fake-live-search"
+    name = "synthetic-placeholder-source"
 
     def __init__(self, hits: list[SearchHit]) -> None:
         self.hits = hits
@@ -131,12 +155,18 @@ def _image_algorithms(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def _pipeline(tmp_path: Path, source: FakeSource) -> DiscoveryPipeline:
+def _pipeline(
+    tmp_path: Path,
+    source: FakeSource,
+    *,
+    copy_engine: FakeCopyEngine | None = None,
+) -> DiscoveryPipeline:
     return DiscoveryPipeline(
         settings=_settings(tmp_path),
         face_engine=FakeFaceEngine(),
         candidate_source=source,
         image_fetcher=FakeFetcher(),
+        copy_engine=copy_engine,
     )
 
 
@@ -155,6 +185,25 @@ def test_pipeline_writes_minimal_verifiable_evidence(tmp_path: Path) -> None:
     assert stored["match"]["threshold_source"] == "test calibration"
     assert stored["query"]["embedding_persisted"] is False
     assert "embedding" not in stored["query"]
+    schema = json.loads(
+        (Path(__file__).parents[1] / "schema" / "evidence-v1.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    Draft202012Validator(schema, format_checker=FormatChecker()).validate(stored)
+
+
+def test_evidence_hashes_full_post_text_while_bounding_excerpt(tmp_path: Path) -> None:
+    image = tmp_path / "query.jpg"
+    image.write_bytes(b"query-image")
+    full_text = "a" * 2100 + "tamper-sensitive-tail"
+    source = FakeSource([replace(_hit(), content_text=full_text)])
+
+    bundle, _ = _pipeline(tmp_path, source).discover(image, consent_asserted=True)
+
+    assert len(bundle.match["post_text"]) == 2000
+    assert bundle.match["post_text_truncated"] is True
+    assert bundle.match["post_text_sha256"] == hashlib.sha256(full_text.encode("utf-8")).hexdigest()
 
 
 def test_pipeline_requires_explicit_consent(tmp_path: Path) -> None:
@@ -181,3 +230,42 @@ def test_pipeline_marks_close_face_candidates_ambiguous(tmp_path: Path) -> None:
     # Same-content corroboration is strong enough that identical reposts are not ambiguous.
     assert bundle.match["ambiguous"] is False
     assert bundle.match["verified_match_count"] == 2
+
+
+def test_dual_faiss_retrieval_and_decision_are_evidenced(tmp_path: Path) -> None:
+    image = tmp_path / "query.jpg"
+    image.write_bytes(b"query-image")
+    source = FakeSource([_hit(), _hit("different.jpg", post_id="negative")])
+    bundle, _ = _pipeline(
+        tmp_path,
+        source,
+        copy_engine=FakeCopyEngine(),
+    ).discover(image, consent_asserted=True)
+
+    assert bundle.search["vector_backend"] == "faiss.IndexFlatIP"
+    assert bundle.query["copy_descriptor"]["enabled"] is True
+    assert bundle.match["decision"] == "same_identity_and_content"
+    assert bundle.match["face_match"] is True
+    assert bundle.match["sscd_match"] is True
+    assert bundle.match["sscd_similarity"] == 1.0
+    assert set(bundle.match["retrieval_channels"]) >= {"face-faiss", "sscd-faiss"}
+    assert bundle.match["copy_retrieval_rank"] == 1
+
+
+@pytest.mark.parametrize(
+    ("face_match", "copy_match", "expected"),
+    [
+        (True, True, "same_identity_and_content"),
+        (True, False, "same_identity_different_content"),
+        (False, True, "copy_face_conflict"),
+        (False, False, "rejected"),
+    ],
+)
+def test_decision_matrix(face_match: bool, copy_match: bool, expected: str) -> None:
+    assert (
+        DiscoveryPipeline._decision(
+            face_match=face_match,
+            copy_match=copy_match,
+        )
+        == expected
+    )

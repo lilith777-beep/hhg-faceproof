@@ -69,6 +69,15 @@ class VerifiedMatch:
     perceptual_hash_distance: int
     feature_match: FeatureMatch
     same_content: bool
+    face_match: bool
+    sscd_similarity: float | None
+    sscd_threshold: float | None
+    sscd_match: bool
+    decision: str
+    retrieval_channels: tuple[str, ...]
+    face_retrieval_rank: int | None
+    copy_retrieval_rank: int | None
+    phash_retrieval_rank: int | None
 
 
 @dataclass(frozen=True, slots=True)

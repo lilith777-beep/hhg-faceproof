@@ -13,8 +13,11 @@ build/
 *.egg-info/
 artifacts/
 calibration/
+copy-calibration/
 calibration.json
+copy-calibration.json
 demo-input/
 models/*.onnx
+models/*.pt
 credentials*.json
 service-account*.json

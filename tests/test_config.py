@@ -13,6 +13,12 @@ def _clear(monkeypatch: pytest.MonkeyPatch) -> None:
         "FACEPROOF_PREFILTER_FACE_THRESHOLD",
         "FACEPROOF_MAX_CANDIDATES",
         "FACEPROOF_MAX_FINALISTS",
+        "FACEPROOF_SSCD_MODE",
+        "FACEPROOF_SSCD_DEVICE",
+        "FACEPROOF_SSCD_BATCH_SIZE",
+        "FACEPROOF_SSCD_THRESHOLD",
+        "FACEPROOF_FACE_RETRIEVAL_K",
+        "FACEPROOF_COPY_RETRIEVAL_K",
         "FACEPROOF_MASTODON_PAGE_SIZE",
         "FACEPROOF_MASTODON_MAX_PAGES",
         "FACEPROOF_SIGNER_MODE",
@@ -29,6 +35,9 @@ def test_defaults_to_local_anvil(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     assert settings.face_threshold == 0.5
     assert settings.detection_threshold == 0.8
     assert settings.face_threshold_source.startswith("conservative project default")
+    assert settings.sscd_mode == "required"
+    assert settings.sscd_threshold == 0.75
+    assert settings.max_finalists == 40
 
 
 def test_explicit_threshold_records_source(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -49,4 +58,13 @@ def test_rejects_prefilter_above_final(monkeypatch: pytest.MonkeyPatch, tmp_path
     monkeypatch.setenv("FACEPROOF_FACE_THRESHOLD", "0.5")
     monkeypatch.setenv("FACEPROOF_PREFILTER_FACE_THRESHOLD", "0.6")
     with pytest.raises(ValueError, match="below the final"):
+        Settings.load(tmp_path)
+
+
+def test_rejects_finalist_cap_that_can_truncate_a_retrieval_lane(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _clear(monkeypatch)
+    monkeypatch.setenv("FACEPROOF_MAX_FINALISTS", "20")
+    with pytest.raises(ValueError, match="fit the configured face and copy retrieval lanes"):
         Settings.load(tmp_path)

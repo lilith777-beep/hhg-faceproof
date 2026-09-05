@@ -84,7 +84,7 @@ class MastodonMediaSource:
                 response = self.client.get(
                     endpoint,
                     params=params,
-                    headers={"Accept": "application/json", "User-Agent": "FaceProof/0.2"},
+                    headers={"Accept": "application/json", "User-Agent": "FaceProof/0.3"},
                 )
                 if response.status_code == 429:
                     delay = min(float(response.headers.get("retry-after", "1") or 1), 3.0)
@@ -93,11 +93,25 @@ class MastodonMediaSource:
                 if response.status_code >= 500 and attempt < 2:
                     time.sleep(0.25 * (2**attempt))
                     continue
+                if response.status_code in {401, 403, 422} and not self.tag:
+                    raise SearchError(
+                        "this instance does not expose its anonymous public timeline; "
+                        "configure FACEPROOF_MASTODON_TAG or pass --tag"
+                    )
                 response.raise_for_status()
                 payload = response.json()
                 if not isinstance(payload, list):
                     raise SearchError("Mastodon timeline returned a non-list response")
                 return [item for item in payload if isinstance(item, dict)]
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code < 500 and exc.response.status_code != 429:
+                    raise SearchError(
+                        f"Mastodon rejected the timeline request with HTTP "
+                        f"{exc.response.status_code}"
+                    ) from exc
+                if attempt == 2:
+                    raise SearchError(f"Mastodon timeline request failed: {exc}") from exc
+                time.sleep(0.25 * (2**attempt))
             except (httpx.HTTPError, ValueError) as exc:
                 if attempt == 2:
                     raise SearchError(f"Mastodon timeline request failed: {exc}") from exc

@@ -36,6 +36,12 @@ class Settings:
     max_image_bytes: int = 12 * 1024 * 1024
     max_redirects: int = 3
     min_confirmations: int = 1
+    sscd_mode: str = "required"
+    sscd_device: str = "auto"
+    sscd_batch_size: int = 16
+    sscd_threshold: float = 0.75
+    face_retrieval_k: int = 20
+    copy_retrieval_k: int = 20
 
     @classmethod
     def load(cls, project_root: Path | None = None) -> Settings:
@@ -61,7 +67,7 @@ class Settings:
         if not 1 <= max_pages <= 25:
             raise ValueError("FACEPROOF_MASTODON_MAX_PAGES must be between 1 and 25")
 
-        max_finalists = int(os.getenv("FACEPROOF_MAX_FINALISTS", "20"))
+        max_finalists = int(os.getenv("FACEPROOF_MAX_FINALISTS", "40"))
         if not 1 <= max_finalists <= max_candidates:
             raise ValueError("FACEPROOF_MAX_FINALISTS must be between 1 and max candidates")
 
@@ -76,6 +82,30 @@ class Settings:
         signer_mode = os.getenv("FACEPROOF_SIGNER_MODE", "unlocked")
         if signer_mode not in {"unlocked", "private-key"}:
             raise ValueError("FACEPROOF_SIGNER_MODE must be 'unlocked' or 'private-key'")
+
+        sscd_mode = os.getenv("FACEPROOF_SSCD_MODE", "required").lower()
+        if sscd_mode not in {"auto", "required", "off"}:
+            raise ValueError("FACEPROOF_SSCD_MODE must be auto, required, or off")
+        sscd_device = os.getenv("FACEPROOF_SSCD_DEVICE", "auto").lower()
+        if sscd_device not in {"auto", "cpu", "cuda"}:
+            raise ValueError("FACEPROOF_SSCD_DEVICE must be auto, cpu, or cuda")
+        sscd_threshold = float(os.getenv("FACEPROOF_SSCD_THRESHOLD", "0.75"))
+        if not 0.0 < sscd_threshold < 1.0:
+            raise ValueError("FACEPROOF_SSCD_THRESHOLD must be between 0 and 1")
+        sscd_batch_size = int(os.getenv("FACEPROOF_SSCD_BATCH_SIZE", "16"))
+        if not 1 <= sscd_batch_size <= 256:
+            raise ValueError("FACEPROOF_SSCD_BATCH_SIZE must be between 1 and 256")
+        face_retrieval_k = int(os.getenv("FACEPROOF_FACE_RETRIEVAL_K", "20"))
+        copy_retrieval_k = int(os.getenv("FACEPROOF_COPY_RETRIEVAL_K", "20"))
+        if not 1 <= face_retrieval_k <= max_candidates:
+            raise ValueError("FACEPROOF_FACE_RETRIEVAL_K must be between 1 and max candidates")
+        if not 1 <= copy_retrieval_k <= max_candidates:
+            raise ValueError("FACEPROOF_COPY_RETRIEVAL_K must be between 1 and max candidates")
+        required_union_capacity = min(max_candidates, face_retrieval_k + copy_retrieval_k)
+        if max_finalists < required_union_capacity:
+            raise ValueError(
+                "FACEPROOF_MAX_FINALISTS must fit the configured face and copy retrieval lanes"
+            )
 
         return cls(
             project_root=root,
@@ -108,4 +138,10 @@ class Settings:
             akaze_min_inlier_ratio=float(os.getenv("FACEPROOF_AKAZE_MIN_INLIER_RATIO", "0.25")),
             max_candidates=max_candidates,
             max_finalists=max_finalists,
+            sscd_mode=sscd_mode,
+            sscd_device=sscd_device,
+            sscd_batch_size=sscd_batch_size,
+            sscd_threshold=sscd_threshold,
+            face_retrieval_k=face_retrieval_k,
+            copy_retrieval_k=copy_retrieval_k,
         )

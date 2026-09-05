@@ -3,7 +3,7 @@ import socket
 import pytest
 
 from faceproof.errors import UnsafeRemoteResource
-from faceproof.remote import validate_public_https_url
+from faceproof.remote import image_media_type, validate_public_https_url
 
 
 def test_rejects_non_https_before_dns() -> None:
@@ -35,3 +35,18 @@ def test_accepts_public_dns_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
         ],
     )
     validate_public_https_url("https://images.example/image.jpg")
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        (b"\xff\xd8\xffrest", "image/jpeg"),
+        (b"\x89PNG\r\n\x1a\nrest", "image/png"),
+        (b"GIF89arest", "image/gif"),
+        (b"BMrest", "image/bmp"),
+        (b"RIFF\x00\x00\x00\x00WEBPrest", "image/webp"),
+        (b"<html>not an image</html>", None),
+    ],
+)
+def test_image_signature_detection(content: bytes, expected: str | None) -> None:
+    assert image_media_type(content) == expected

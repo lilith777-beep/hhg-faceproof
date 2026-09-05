@@ -18,6 +18,20 @@ ALLOWED_IMAGE_TYPES = {
 }
 
 
+def image_media_type(content: bytes) -> str | None:
+    if content.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if content.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if content.startswith(b"BM"):
+        return "image/bmp"
+    if len(content) >= 12 and content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class RemoteImage:
     url: str
@@ -69,7 +83,7 @@ class SafeImageFetcher:
         timeout_s: float,
         max_bytes: int,
         max_redirects: int,
-        user_agent: str = "FaceProof/0.1 (+https://github.com/BlueBlaze6335)",
+        user_agent: str = "FaceProof/0.3 (+https://github.com/BlueBlaze6335/hhg-faceproof)",
     ) -> None:
         self.timeout_s = timeout_s
         self.max_bytes = max_bytes
@@ -131,7 +145,15 @@ class SafeImageFetcher:
                         chunks.append(chunk)
                     if not chunks:
                         raise SearchError("candidate image was empty")
-                    return RemoteImage(current, b"".join(chunks), content_type)
+                    content = b"".join(chunks)
+                    detected_type = image_media_type(content)
+                    if detected_type is None:
+                        raise SearchError("candidate body has no supported image signature")
+                    if detected_type != content_type:
+                        raise SearchError(
+                            "candidate image signature does not match its declared content type"
+                        )
+                    return RemoteImage(current, content, detected_type)
             except httpx.HTTPError as exc:
                 raise SearchError(f"candidate download failed: {exc}") from exc
 
