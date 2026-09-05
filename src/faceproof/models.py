@@ -38,6 +38,7 @@ class SearchHit:
 @dataclass(frozen=True, slots=True)
 class SearchBatch:
     provider: str
+    live_query: bool
     scope: str
     endpoint: str
     fetched_at: str

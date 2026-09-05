@@ -59,6 +59,7 @@ class FakeSource:
         self.calls += 1
         return SearchBatch(
             provider=self.name,
+            live_query=False,
             scope="https://social.example hashtag #consented",
             endpoint="https://social.example/api/v1/timelines/tag/consented",
             fetched_at=datetime.now(UTC).isoformat(),

@@ -1,0 +1,33 @@
+name: FaceProof CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Lint
+        run: ruff check src tests
+      - name: Test
+        run: pytest
+      - name: Validate CLI and JSON schema
+        run: |
+          faceproof --help
+          python -c "import json,pathlib; json.loads(pathlib.Path('schema/evidence-v1.schema.json').read_text())"
+      - name: Build distributable wheel
+        run: |
+          python -m pip wheel . --no-deps --wheel-dir dist
+          python -c "import glob,zipfile; n=zipfile.ZipFile(glob.glob('dist/*.whl')[0]).namelist(); assert len([p for p in n if '/fixtures/' in p and p.endswith('.png')]) == 3"

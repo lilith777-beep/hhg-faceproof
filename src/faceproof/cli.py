@@ -12,6 +12,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from .acceptance import run_chain_acceptance, run_placeholder_acceptance
 from .calibration import calibrate
 from .chain import EthereumAnchor
 from .config import Settings
@@ -181,6 +182,45 @@ def doctor() -> None:
 def _model_is_valid(model_dir: Path, spec: ModelSpec) -> bool:
     path = model_dir / spec.filename
     return path.exists() and _file_sha256(path) == spec.sha256
+
+
+@app.command()
+def acceptance(
+    skip_chain: Annotated[
+        bool,
+        typer.Option(help="Run only local biometric/evidence checks without Anvil."),
+    ] = False,
+) -> None:
+    """Run the bundled synthetic biometric, evidence, chain, and tamper gates."""
+    settings = _settings()
+    biometric = run_placeholder_acceptance(settings)
+    checks = dict(biometric["checks"])
+    chain_result: dict | None = None
+    if not skip_chain:
+        chain_result = run_chain_acceptance(settings, biometric["evidence_path"])
+        checks["all_chain_checks"] = all(chain_result["verification_checks"].values())
+        checks["tamper_rejected"] = bool(chain_result["tamper_rejected"])
+
+    table = Table(title="Synthetic release acceptance")
+    table.add_column("Check")
+    table.add_column("Result")
+    for name, passed in checks.items():
+        table.add_row(
+            name.replace("_", " "), "[green]PASS[/green]" if passed else "[red]FAIL[/red]"
+        )
+    console.print(table)
+    console.print(
+        f"Positive {biometric['positive_score']:.3f} | "
+        f"negative {biometric['negative_score']:.3f} | "
+        f"threshold {biometric['threshold']:.3f}"
+    )
+    console.print(f"Evidence: {biometric['evidence_path']}")
+    if chain_result:
+        console.print(f"Transaction: {chain_result['transaction_hash']}")
+    console.print(
+        "[yellow]Synthetic acceptance is not the final live-post proof. "
+        "A consenting human image and genuinely discovered public post remain required.[/yellow]"
+    )
 
 
 @app.command()

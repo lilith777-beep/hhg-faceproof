@@ -54,6 +54,19 @@ faceproof models install
 faceproof doctor
 ```
 
+Run the complete bundled synthetic acceptance proof with one command:
+
+```powershell
+faceproof acceptance
+```
+
+It verifies a fictional same-person pair against a different-person negative, writes evidence,
+starts a localhost Anvil process when available, anchors and re-verifies the digest, confirms a
+tampered copy is rejected, then stops the Anvil process it started. This proves the software path;
+it is deliberately labeled synthetic and does not replace the required genuine live-post run.
+
+For a short human checklist, open [`DO_THIS_NEXT.md`](DO_THIS_NEXT.md).
+
 Install Foundry from its official installer, then start a local chain in a second terminal:
 
 ```powershell

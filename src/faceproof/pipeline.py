@@ -305,7 +305,7 @@ class DiscoveryPipeline:
             },
             search={
                 "provider": batch.provider,
-                "live_query": True,
+                "live_query": batch.live_query,
                 "scope": batch.scope,
                 "endpoint": batch.endpoint,
                 "provider_fetched_at": batch.fetched_at,
@@ -357,12 +357,16 @@ class DiscoveryPipeline:
             claims={
                 "verified": (
                     "the supplied face is visually consistent with the selected public-post image"
+                    if batch.live_query
+                    else "the synthetic query face is visually consistent with a synthetic fixture"
                 ),
+                "submission_eligible_live_search": batch.live_query,
                 "same_content_verified": best.same_content,
                 "not_verified": [
                     "the legal identity of any person",
                     "the truthfulness or authorship of the post",
                     "content outside the bounded social-search scope",
+                    *(["a genuine social-search result"] if not batch.live_query else []),
                 ],
                 "blockchain_scope": (
                     "a later anchor proves integrity of this canonical evidence object "

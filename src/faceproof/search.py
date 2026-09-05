@@ -175,6 +175,7 @@ class MastodonMediaSource:
         scope = f"hashtag #{self.tag}" if self.tag else "public media timeline"
         return SearchBatch(
             provider=self.name,
+            live_query=True,
             scope=f"{self.instance} {scope}",
             endpoint=endpoint,
             fetched_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
