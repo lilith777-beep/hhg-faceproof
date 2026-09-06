@@ -27,6 +27,7 @@ jobs:
         run: |
           faceproof --help
           python -c "import json,pathlib; json.loads(pathlib.Path('schema/evidence-v1.schema.json').read_text())"
+          python -c "import json,pathlib; json.loads(pathlib.Path('schema/evidence-v2.schema.json').read_text())"
       - name: Build distributable wheel
         run: |
           python -m pip wheel . --no-deps --wheel-dir dist

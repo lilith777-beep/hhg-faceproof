@@ -82,6 +82,13 @@ class SSCDDescriptorEngine:
         device: str = "auto",
         batch_size: int = 16,
     ) -> None:
+        path = model_dir / SSCD.filename
+        if not path.is_file():
+            raise FaceInputError("SSCD model is missing; run `faceproof models install`")
+        actual = file_sha256(path)
+        if actual != SSCD.sha256:
+            raise FaceInputError(f"model checksum mismatch: {path.name}")
+
         try:
             import cv2
             import torch
@@ -89,13 +96,6 @@ class SSCDDescriptorEngine:
             raise FaceInputError(
                 "SSCD requires the optional vision runtime; run pip install -e '.[dev,vision]'"
             ) from exc
-
-        path = model_dir / SSCD.filename
-        if not path.is_file():
-            raise FaceInputError("SSCD model is missing; run `faceproof models install`")
-        actual = file_sha256(path)
-        if actual != SSCD.sha256:
-            raise FaceInputError(f"model checksum mismatch: {path.name}")
         if device not in {"auto", "cpu", "cuda"}:
             raise FaceInputError("FACEPROOF_SSCD_DEVICE must be auto, cpu, or cuda")
         resolved = "cuda" if device == "auto" and torch.cuda.is_available() else device
