@@ -1,0 +1,18 @@
+# Installed by ops/install.sh to /etc/logrotate.d/hhgvrag
+# Rotates hhgvrag's FILE-based logs (server stdout goes to journald, which is capped separately).
+# cloudflared holds its logfile open, so copytruncate (not rename) is required.
+/home/padmanabha/hhgvrag/logs/cloudflared.log
+/home/padmanabha/hhgvrag/logs/incidents.log
+/home/padmanabha/hhgvrag/server.log
+/home/padmanabha/hhgvrag/tunnel.log
+{
+    daily
+    rotate 7
+    maxsize 100M
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+    su padmanabha padmanabha
+}

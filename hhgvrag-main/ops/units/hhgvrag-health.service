@@ -1,0 +1,9 @@
+[Unit]
+Description=hhgvrag health probe + bounded self-heal (3-fail threshold, 5-min cooldown)
+Documentation=file:///home/padmanabha/hhgvrag/docs/RUNBOOK.md
+After=hhgvrag.service
+
+[Service]
+Type=oneshot
+# Runs as root: on 3 consecutive failures (past the cooldown) it issues `systemctl restart hhgvrag`.
+ExecStart=/home/padmanabha/hhgvrag/bin/healthcheck.sh

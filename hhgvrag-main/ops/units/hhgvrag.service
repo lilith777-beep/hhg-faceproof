@@ -1,0 +1,51 @@
+[Unit]
+Description=hhgvrag — Voice RAG server (Forge A6000, <200ms retrieval->output)
+Documentation=file:///home/padmanabha/hhgvrag/docs/RUNBOOK.md
+After=network-online.target qdrant-hhgvrag.service
+Wants=network-online.target
+# Requires= starts Qdrant but does NOT wait for it to be READY — the ExecStartPre /readyz gate below
+# provides real readiness (a bare Requires= would race the server ahead of a still-loading Qdrant).
+Requires=qdrant-hhgvrag.service
+
+# Crash-loop guard: at most 5 starts per 10 min, else systemd stops trying (see RUNBOOK to reset).
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=padmanabha
+Group=padmanabha
+WorkingDirectory=/home/padmanabha/hhgvrag
+
+# --- runtime env (matches the known-good manual launch) --------------------------------------
+# vLLM needs CUDA_HOME + its JIT tools on PATH, and the flashinfer sampler OFF (vLLM 0.27 / py3.13).
+Environment=CUDA_HOME=/usr/local/cuda-12.4
+Environment=VLLM_USE_FLASHINFER_SAMPLER=0
+Environment=PATH=/usr/local/cuda-12.4/bin:/home/padmanabha/anaconda3/envs/hhgvrag313/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=PYTHONUNBUFFERED=1
+# Secrets (SARVAM_API_KEY, HF_TOKEN, ...) — chmod 600, created under P0.1, NEVER printed.
+# Using EnvironmentFile keeps keys out of `ps`/argv (the previous nohup launch leaked them into argv).
+EnvironmentFile=/home/padmanabha/.config/hhgvrag.env
+
+# --- readiness gate + GPU pre-clean ----------------------------------------------------------
+# 1) Wait (up to 120s) for Qdrant to report all shards ready.
+ExecStartPre=/bin/bash -c 'for i in $(seq 1 60); do curl -sf -m 3 http://localhost:6333/readyz >/dev/null 2>&1 && exit 0; sleep 2; done; echo "qdrant /readyz not ready after 120s" >&2; exit 1'
+# 2) Reap any GPU orphan left by a prior crashed instance BEFORE we try to allocate VRAM.
+ExecStartPre=/home/padmanabha/hhgvrag/bin/gpu_orphan_sweep.sh preflight
+
+ExecStart=/home/padmanabha/anaconda3/envs/hhgvrag313/bin/python src/server.py --qdrant-url http://localhost:6333 --port 8000
+
+# --- shutdown / restart ----------------------------------------------------------------------
+# control-group kill SIGTERMs the WHOLE cgroup, including the renamed VLLM::EngineCore child that a
+# name-based kill would miss. ExecStopPost then reaps anything that still escaped (double-fork).
+KillMode=control-group
+KillSignal=SIGTERM
+TimeoutStartSec=600
+TimeoutStopSec=45
+ExecStopPost=/home/padmanabha/hhgvrag/bin/gpu_orphan_sweep.sh poststop
+
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

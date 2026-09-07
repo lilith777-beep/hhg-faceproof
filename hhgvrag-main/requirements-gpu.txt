@@ -1,0 +1,16 @@
+# GPU box (Forge) requirements — python 3.11. Install torch FIRST with the right CUDA:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+# then: pip install -r requirements-gpu.txt
+torch>=2.3
+vllm>=0.5           # quality-mode 7B: prefix caching + fast prefill (falls back to HF if absent)
+transformers>=4.44
+accelerate>=0.30
+FlagEmbedding>=1.2
+qdrant-client>=1.9
+fastapi>=0.110
+uvicorn>=0.29
+pydantic>=2.5
+httpx>=0.27
+datasets>=2.16
+python-multipart>=0.0.9
+numpy

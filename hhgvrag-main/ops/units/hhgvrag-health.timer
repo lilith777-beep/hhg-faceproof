@@ -1,0 +1,13 @@
+[Unit]
+Description=Run the hhgvrag health probe every 60s
+Documentation=file:///home/padmanabha/hhgvrag/docs/RUNBOOK.md
+
+[Timer]
+# Give the box time to boot + models to load before the first probe, then run every minute.
+OnBootSec=3min
+OnUnitActiveSec=60s
+AccuracySec=10s
+Unit=hhgvrag-health.service
+
+[Install]
+WantedBy=timers.target

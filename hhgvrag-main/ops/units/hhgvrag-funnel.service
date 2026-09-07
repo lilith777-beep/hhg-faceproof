@@ -1,0 +1,20 @@
+[Unit]
+Description=hhgvrag Tailscale Funnel re-arm (public HTTPS -> 127.0.0.1:8000)
+Documentation=file:///home/padmanabha/hhgvrag/docs/RUNBOOK.md
+After=network-online.target tailscaled.service hhgvrag.service
+Wants=network-online.target
+Requires=tailscaled.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Runs as root: `tailscale funnel` was armed with sudo on this box, so it needs elevated perms.
+#
+# Idempotent re-arm. tailscaled already persists the Funnel config across reboots; this oneshot is
+# belt-and-suspenders and a no-op when the funnel is already serving :8000. The exact observed
+# config is:  https://goquest-z790-aorus-elite-ax.tail16e418.ts.net  ->  / proxy http://127.0.0.1:8000
+# which is produced by `tailscale funnel --bg 8000` (verified via `tailscale funnel status`).
+ExecStart=/bin/bash -c '/usr/bin/tailscale funnel status 2>/dev/null | grep -q "127.0.0.1:8000" && { echo "funnel already armed for :8000"; exit 0; } ; exec /usr/bin/tailscale funnel --bg --yes 8000'
+
+[Install]
+WantedBy=multi-user.target

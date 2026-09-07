@@ -1,0 +1,30 @@
+[Unit]
+Description=Qdrant vector DB for hhgvrag (docker, HNSW server mode on :6333)
+Documentation=file:///home/padmanabha/hhgvrag/docs/RUNBOOK.md
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+# Runs as root (owns the docker socket). Qdrant inside the container runs as its own user.
+#
+# Image is DIGEST-PINNED to the exact image running on the box at install time:
+#   qdrant/qdrant  ==  v1.19.0  ==  sha256:057ee3a8da769fe7310dd3537b4dc7583bf87a95ce8ac43c0af5a46bc580d1fc
+# (verified via `docker image inspect qdrant/qdrant --format '{{json .RepoDigests}}'`).
+# To move versions deliberately, change the digest here and `docker pull` it first.
+#
+# ExecStartPre force-removes any pre-existing `qdrant` container (e.g. the old
+# `--restart unless-stopped` one) so systemd — not docker's restart policy — owns the lifecycle.
+# All data lives on the /home/padmanabha/qdrant_storage bind mount, so removing the container is
+# non-destructive.
+ExecStartPre=-/usr/bin/docker rm -f qdrant
+ExecStart=/usr/bin/docker run --rm --name qdrant -p 6333:6333 -v /home/padmanabha/qdrant_storage:/qdrant/storage qdrant/qdrant@sha256:057ee3a8da769fe7310dd3537b4dc7583bf87a95ce8ac43c0af5a46bc580d1fc
+ExecStop=/usr/bin/docker stop -t 20 qdrant
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=120
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

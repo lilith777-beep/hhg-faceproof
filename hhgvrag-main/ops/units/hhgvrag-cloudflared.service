@@ -1,0 +1,32 @@
+[Unit]
+Description=hhgvrag Cloudflare quick tunnel (rotating failover URL -> localhost:8000)
+Documentation=file:///home/padmanabha/hhgvrag/docs/RUNBOOK.md
+After=network-online.target hhgvrag.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=padmanabha
+Group=padmanabha
+WorkingDirectory=/home/padmanabha/hhgvrag
+
+# WHY quick tunnel (not a named tunnel): no owned domain exists, so we cannot pin a stable
+# *.cfargotunnel hostname. The quick-tunnel URL ROTATES on every (re)start; cf_url_capture.sh writes
+# the current one to logs/cf_url.txt. Tailscale Funnel remains the PRIMARY, stable public URL — this
+# is warm failover only.
+#
+# NOTE: a SEPARATE, unrelated cloudflared named tunnel ("engageai-cockpit") runs from
+# ~/.local/bin/cloudflared on this box. This unit uses ~/bin/cloudflared and its own systemd cgroup;
+# never `pkill cloudflared` (that would kill the other project's tunnel).
+ExecStartPre=/bin/bash -c 'mkdir -p /home/padmanabha/hhgvrag/logs; : > /home/padmanabha/hhgvrag/logs/cloudflared.log'
+ExecStart=/home/padmanabha/bin/cloudflared tunnel --no-autoupdate --url http://localhost:8000 --loglevel info
+# Capture BOTH streams to the logfile: cloudflared prints the quick-tunnel URL banner to stderr, so
+# a plain --logfile can miss it. cf_url_capture.sh then greps this file for the trycloudflare URL.
+StandardOutput=append:/home/padmanabha/hhgvrag/logs/cloudflared.log
+StandardError=append:/home/padmanabha/hhgvrag/logs/cloudflared.log
+ExecStartPost=/home/padmanabha/hhgvrag/bin/cf_url_capture.sh
+Restart=on-failure
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target

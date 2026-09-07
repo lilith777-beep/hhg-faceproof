@@ -1,0 +1,718 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>hhgvrag — corpus & evaluation dossier · #RAGInGoa</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%230b1f16'/%3E%3Ctext x='50' y='72' font-size='58' text-anchor='middle'%3E%F0%9F%8E%99%3C/text%3E%3C/svg%3E">
+<meta name="description" content="Researcher-grade EDA of the MSMARCO-XI validation-sample corpus (manifest 73ca3e90): composition, leakage-safe split, length distributions, risk–coverage and accuracy–latency. Self-contained, traceable, sample-labeled." />
+<style>
+/* ============ self-contained cobalt "signal instrument" system (no external hosts) ============ */
+:root{
+  --void:#060e28; --paper:#081642; --surface:#0c2160; --deep:#071540;
+  --well:#0a1a46; --chip:#0b1c4e; --card:#0a1c50;
+  --ink:#eaf0ff; --mut:#9aacde; --faint:#889ad6;
+  --hair:rgba(234,240,255,.12); --hair2:rgba(234,240,255,.22);
+  --cobalt:#2e6bff; --cobalt-t:#6e9bff; --volt:#fee101; --green:#3df5a0;
+  --coral:#ff6b4a; --coral-lt:#ff8a6a; --violet:#c9a1ff; --cyan:#00b3ff; --teal:#4fe0c0;
+  --mono:ui-monospace,'Cascadia Code','SF Mono',Consolas,Menlo,monospace;
+  --body:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  font-family:var(--body); background:var(--void); color:var(--ink);
+  min-height:100dvh; line-height:1.55; letter-spacing:.1px;
+  background-image:
+    radial-gradient(1200px 640px at 50% -12%, rgba(46,107,255,.20), transparent 60%),
+    radial-gradient(760px 460px at 100% 2%, rgba(46,107,255,.08), transparent 62%),
+    radial-gradient(rgba(120,150,240,.05) 1px, transparent 1.5px);
+  background-size:auto,auto,23px 23px; background-attachment:fixed;
+}
+.wrap{max-width:1080px;margin:0 auto;padding:26px 20px 80px}
+a{color:var(--cobalt-t)}
+.backlink{display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:5px 0;margin-bottom:2px;
+  font:600 12px var(--mono);letter-spacing:.4px;color:var(--cobalt-t);text-decoration:none}
+.backlink:hover{color:var(--ink);text-decoration:underline}
+.backlink:focus-visible{outline:2px solid var(--volt);outline-offset:3px;border-radius:6px}
+
+/* header */
+.dhead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:6px 0 4px}
+.mark{font:800 34px/1 var(--body);letter-spacing:-.5px;color:var(--ink)}
+.mark em{font-style:normal;color:var(--volt)}
+.mark .slash{color:var(--faint);font-weight:600;font-size:18px;letter-spacing:0;margin-left:8px}
+.provs{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.provs .p{font:600 10.5px var(--mono);letter-spacing:.4px;color:var(--mut);background:rgba(9,20,58,.66);
+  border:1px solid var(--hair);border-radius:999px;padding:6px 11px;display:flex;align-items:center;gap:6px}
+.provs .p b{color:var(--ink);font-weight:600}
+.provs .p .led{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+.lede{font-size:14px;color:var(--mut);margin:14px 0 6px;max-width:78ch}
+.lede b{color:var(--ink);font-weight:600}
+
+/* banner (data provenance) */
+.banner{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0 20px;padding:11px 15px;border-radius:12px;
+  font:600 12px var(--mono);letter-spacing:.3px}
+.banner.sample{background:rgba(254,225,1,.07);border:1px solid rgba(254,225,1,.4);color:var(--volt)}
+.banner.live{background:rgba(61,245,160,.07);border:1px solid rgba(61,245,160,.4);color:var(--green)}
+.banner .tagpill{font:700 10px var(--mono);letter-spacing:1px;text-transform:uppercase;padding:3px 9px;border-radius:6px;
+  border:1px solid currentColor}
+.banner span.t{color:var(--mut);font-weight:500}
+
+/* grid + cards */
+.grid{display:grid;gap:16px;grid-template-columns:1fr}
+@media(min-width:860px){.grid{grid-template-columns:1fr 1fr}.full{grid-column:1/-1}}
+.card{background:linear-gradient(180deg,var(--card),var(--deep));border:1px solid var(--hair);border-radius:16px;
+  padding:18px 18px 16px;box-shadow:0 18px 50px rgba(2,8,30,.42),inset 0 1px 0 rgba(234,240,255,.04);position:relative;overflow:hidden}
+.card::after{content:"";position:absolute;left:18px;right:18px;top:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(46,107,255,.55),transparent)}
+.eyebrow{font:700 10px var(--mono);letter-spacing:1.6px;text-transform:uppercase;color:var(--faint);display:flex;
+  align-items:center;gap:8px;margin-bottom:4px}
+.eyebrow .no{color:var(--cobalt-t)}
+h2{font:700 18px var(--body);letter-spacing:-.2px;color:var(--ink);margin-bottom:3px}
+.sourced{font:500 10.5px var(--mono);color:var(--faint);letter-spacing:.2px;margin-bottom:14px}
+.sourced b{color:var(--mut);font-weight:600}
+.note{font:500 11.5px var(--mono);color:var(--faint);margin-top:12px;line-height:1.5}
+.note b{color:var(--mut);font-weight:600}
+.star{color:var(--volt)}
+
+/* sealed stamp */
+.stampgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:6px}
+.kv{background:var(--well);border:1px solid var(--hair);border-radius:11px;padding:12px 13px}
+.kv .k{font:600 9.5px var(--mono);letter-spacing:1px;text-transform:uppercase;color:var(--faint)}
+.kv .v{font:600 15px var(--mono);color:var(--ink);margin-top:5px;word-break:break-word}
+.kv .v.amber{color:var(--volt)}
+.kv .v.small{font-size:12px}
+.stampline{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;padding-top:13px;border-top:1px solid var(--hair)}
+.seal{font:800 11px var(--mono);letter-spacing:1.5px;text-transform:uppercase;color:var(--green);
+  border:1.5px solid var(--green);border-radius:7px;padding:5px 11px;box-shadow:0 0 14px rgba(61,245,160,.22)}
+.stampline .desc{font-size:13px;color:var(--mut)}
+.stampline .desc b{color:var(--ink)}
+
+/* leakage proof */
+.leakrow{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.leakcell{background:var(--well);border:1px solid rgba(61,245,160,.28);border-radius:12px;padding:16px 12px;text-align:center}
+.leakcell .big{font:600 46px var(--mono);color:var(--green);line-height:1;
+  text-shadow:0 0 20px rgba(61,245,160,.4),0 0 3px rgba(61,245,160,.5)}
+.leakcell .lbl{font:600 10px var(--mono);letter-spacing:.6px;text-transform:uppercase;color:var(--faint);margin-top:9px;line-height:1.35}
+.leakcaption{font:500 12px var(--mono);color:var(--mut);margin-top:13px;line-height:1.55}
+.leakcaption b{color:var(--green)}
+
+/* bars (per-language / generic magnitude) */
+.bars{display:flex;flex-direction:column;gap:7px;margin-top:4px}
+.barrow{display:grid;grid-template-columns:96px 1fr auto;align-items:center;gap:10px}
+.barrow .name{font:600 11.5px var(--mono);color:var(--mut);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.barrow .track{height:16px;background:rgba(255,255,255,.04);border-radius:5px;overflow:hidden;position:relative}
+.barrow .fill{height:100%;border-radius:5px}
+.barrow .val{font:600 11px var(--mono);color:var(--faint);min-width:58px;text-align:right}
+
+/* treemap wrapper */
+.figwrap{overflow-x:auto;margin-top:6px}
+svg{display:block;max-width:100%;height:auto}   /* fixed height attrs letterboxed phones */
+svg text{font-family:var(--mono)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:12px}
+.legend .li{font:600 10.5px var(--mono);color:var(--mut);display:flex;align-items:center;gap:6px}
+.legend .li i{width:10px;height:10px;border-radius:2px;display:inline-block}
+
+/* split */
+.splitbars{display:flex;flex-direction:column;gap:12px;margin-top:2px}
+.stack{height:26px;display:flex;border-radius:7px;overflow:hidden;border:1px solid var(--hair)}
+.stack > span{display:flex;align-items:center;justify-content:center;font:700 10px var(--mono);color:#06122e;min-width:2px;overflow:hidden;white-space:nowrap}
+.splitlabels{display:flex;justify-content:space-between;font:600 10.5px var(--mono);color:var(--faint);margin-top:6px}
+.minikv{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.minikv .m{background:var(--well);border:1px solid var(--hair);border-radius:10px;padding:10px 12px}
+.minikv .m .k{font:600 9.5px var(--mono);letter-spacing:.6px;text-transform:uppercase;color:var(--faint)}
+.minikv .m .v{font:700 16px var(--mono);color:var(--ink);margin-top:4px}
+
+/* lengths percentile bars */
+.pctbar{display:flex;flex-direction:column;gap:11px;margin-top:4px}
+.pctrow .top{display:flex;justify-content:space-between;font:600 11.5px var(--mono);color:var(--mut);margin-bottom:5px}
+.pctrow .top b{color:var(--ink)}
+.pctrow .track{height:12px;background:rgba(255,255,255,.045);border-radius:6px;position:relative;overflow:hidden}
+.pctrow .seg{position:absolute;top:0;bottom:0;border-radius:6px}
+.ticks{display:flex;justify-content:space-between;font:600 9.5px var(--mono);color:var(--faint);margin-top:5px}
+
+/* table */
+.tablewrap{overflow-x:auto;margin-top:4px}
+table{border-collapse:collapse;width:100%;font-size:12.5px;min-width:560px}
+thead th{font:700 9.5px var(--mono);letter-spacing:.7px;text-transform:uppercase;color:var(--faint);text-align:right;
+  padding:8px 10px;border-bottom:1px solid var(--hair2);position:sticky;top:0}
+thead th.l{text-align:left}
+tbody td{padding:8px 10px;border-bottom:1px solid var(--hair);text-align:right;font-variant-numeric:tabular-nums;color:var(--ink);font-family:var(--mono);font-size:12px}
+tbody td.l{text-align:left;font-family:var(--body);color:var(--mut);font-weight:600}
+tbody tr:hover{background:rgba(46,107,255,.06)}
+tbody td .mini{display:inline-block;height:7px;border-radius:4px;vertical-align:middle;margin-left:7px;background:var(--cobalt)}
+.collapsed td.l{color:var(--faint)}
+.collapsed td.l::after{content:" ↳ folds into sibling";color:var(--coral-lt);font-family:var(--mono);font-size:10px;font-weight:600}
+
+/* footer */
+footer{margin-top:30px;border-top:1px solid var(--hair);padding-top:18px;font-size:12px;color:var(--mut);line-height:1.65}
+footer h3{font:700 10px var(--mono);letter-spacing:1.4px;text-transform:uppercase;color:var(--faint);margin-bottom:9px}
+footer ul{list-style:none;display:flex;flex-direction:column;gap:6px}
+footer li{padding-left:16px;position:relative}
+footer li::before{content:"—";position:absolute;left:0;color:var(--cobalt-t)}
+footer .brand{margin-top:16px;font:600 12px var(--mono);color:var(--faint)}
+footer .brand em{font-style:normal;color:var(--volt)}
+.chartcap{font:600 10.5px var(--mono);color:var(--faint);margin-top:10px;line-height:1.5}
+.chartcap b{color:var(--mut)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header class="dhead">
+    <div>
+      <a class="backlink" href="index.html">← live demo</a>
+      <h1 class="mark">hhg<em>vrag</em><span class="slash">/ corpus &amp; evaluation dossier</span></h1>
+    </div>
+    <div class="provs" id="prov"></div>
+  </header>
+  <p class="lede">Every number here is <b>traceable</b> to a frozen artifact: the leakage-safe split and counts come
+  from the signed realization manifest; composition, lengths and topics come from a streaming pass over the source shards;
+  results come from the sealed evaluation. Sampled or illustrative quantities are <b>labeled as such</b> — this is a
+  <b>validation-split sample</b>, never the entire validation set.</p>
+
+  <div class="banner" id="banner"></div>
+
+  <div class="grid">
+    <section class="card full" id="c-stamp">
+      <div class="eyebrow"><span class="no">01</span> · sealed test stamp</div>
+      <h2>Frozen build &amp; leakage-disjoint holdout</h2>
+      <div class="sourced">source · <b>realization.json</b> (signed manifest) · git SHA at generation</div>
+      <div id="stamp"></div>
+    </section>
+
+    <section class="card full" id="c-leak">
+      <div class="eyebrow"><span class="no">02</span> · leakage proof</div>
+      <h2>Indexed ∩ held-out = 0 / 0 / 0</h2>
+      <div class="sourced">source · <b>realization.json</b> integrity block (re-proven on the realized index)</div>
+      <div id="leak"></div>
+    </section>
+
+    <section class="card full" id="c-comp">
+      <div class="eyebrow"><span class="no">03</span> · corpus composition</div>
+      <h2>Canonical passages across 14 source languages</h2>
+      <div class="sourced">source · streaming shard pass <span class="star">(sample)</span> · language = Unicode script detection</div>
+      <div id="comp"></div>
+    </section>
+
+    <section class="card" id="c-split">
+      <div class="eyebrow"><span class="no">04</span> · split structure</div>
+      <h2>Whole-family allocation</h2>
+      <div class="sourced">source · <b>realization.json</b> (frozen)</div>
+      <div id="split"></div>
+    </section>
+
+    <section class="card" id="c-len">
+      <div class="eyebrow"><span class="no">05</span> · length distributions</div>
+      <h2>Short passages, heavy tail</h2>
+      <div class="sourced">source · shard pass + Qdrant chunks <span class="star">(sample)</span></div>
+      <div id="len"></div>
+    </section>
+
+    <section class="card full" id="c-lang">
+      <div class="eyebrow"><span class="no">06</span> · per-language results</div>
+      <h2>Coverage &amp; retrieval quality by detected language</h2>
+      <div class="sourced">source · shards + realization · <span class="star">recall@10 / MRR@10 illustrative until the sealed eval writes data_stats.json</span></div>
+      <div id="langtable"></div>
+    </section>
+
+    <section class="card" id="c-risk">
+      <div class="eyebrow"><span class="no">07</span> · risk–coverage</div>
+      <h2>Knowing when not to answer</h2>
+      <div class="sourced">source · abstain-threshold sweep <span class="star">(illustrative)</span></div>
+      <div id="risk"></div>
+    </section>
+
+    <section class="card" id="c-frontier">
+      <div class="eyebrow"><span class="no">08</span> · accuracy–latency</div>
+      <h2>The 200 ms frontier</h2>
+      <div class="sourced">source · config sweep <span class="star">(illustrative)</span> + live P50/P70/P90/P100</div>
+      <div id="frontier"></div>
+    </section>
+  </div>
+
+  <footer id="foot"></footer>
+</main>
+
+<script>
+"use strict";
+/* ============================================================================================
+   data.html — researcher dossier. Renders the eval/eda.py data_stats.json schema (+ frozen
+   realization.json). SAMPLE below is clearly-labeled placeholder data that a single fetch to
+   ./data_stats.json overrides when present. Every rendered string goes through textContent /
+   DOM construction — no innerHTML sink touches data, so hostile fields stay inert.
+   ============================================================================================ */
+const $ = id => document.getElementById(id);
+const SVGNS = "http://www.w3.org/2000/svg";
+
+/* ---- REAL frozen figures (from eval/builds/73ca3e90/realization.json) ---- */
+const REALIZATION = {
+  source_rows: 84000, source_passages: 1670657, unique_canonical: 885959, n_families: 60172,
+  indexed_docs: 875859, heldout_docs: 10100, indexed_families: 59773, heldout_families: 399,
+  indexed_queries: 48649, heldout_queries: 5405, excluded_queries: 14,
+  calibration_queries: 21628, dev_queries: 16225, sealed_queries: 16201,
+  in_corpus_partition: { calibration: 19458, dev: 14601, sealed: 14590 },
+  absent_evidence_partition: { calibration: 2170, dev: 1624, sealed: 1611 },
+  excluded_reasons: { "positive families split across indexed and held-out": 14 },
+  query_groups: { indexed: 3476, heldout: 387 },
+  leakage: { family_intersection: 0, stable_doc_id_intersection: 0, exact_hash_intersection: 0,
+             indexed_exact_hashes: 875600, heldout_exact_hashes: 10096 }
+};
+
+/* ---- SAMPLE (illustrative placeholder matching build_data_stats() shape) ---- */
+const SAMPLE = {
+  meta: { generated: "sample", seed: 20260817, git_sha: "ed2cc58b5036280de9986199fdfb681e2e96b580",
+          ran_shards: true, ran_qdrant: true, self_test: false },
+  manifest: "73ca3e90",
+  scope: { scope_type: "deterministic_validation_split_sample", source_languages: 14,
+           rows_per_language_shard: 6000, corpus_hash: "d035931b53272672a8f3becf016585633d1871e2fc1002caccbd634514a9d083",
+           public_wording: "Deterministic validation-split sample: 84k source rows across all 14 languages, producing 876k indexed canonical documents and a leakage-disjoint 10.1k-document absent-evidence holdout." },
+  realization: REALIZATION,
+  composition: {
+    n_occurrences_shards: 1670657, n_canonical_shards: 885959, english_canonical: 305959,
+    canonical_by_detected_lang: { en: 305959, hi: 181000, bn: 79000, ta: 52000, te: 50000,
+      ml: 42000, kn: 41000, gu: 40000, ur: 35000, or: 30000, pa: 30000 },
+    collapse_note: { mr: "hi", sa: "hi", ne: "hi", as: "bn" }
+  },
+  lengths: {
+    passage_char_overall: { p50: 352, p90: 1180, p95: 1642, p99: 2588, p100: 14903, mean: 486.2, n: 885959 },
+    passage_wordtok_overall: { p50: 56, p90: 188, p95: 262, p99: 418, p100: 2372, mean: 78.4, n: 885959 },
+    max_passage_chars: 14903, passages_over_2000_chars: 21044
+  },
+  queries: {
+    n_distinct: 54068, char: { p50: 39, p90: 71, p99: 118, p100: 214, mean: 42.6, n: 54068 },
+    wordtok: { p50: 6, p90: 11, p99: 18, p100: 34, mean: 6.8, n: 54068 },
+    per_source_lang: { as: 3862, bn: 3862, gu: 3862, hi: 3862, kn: 3862, ml: 3862, mr: 3862,
+      ne: 3862, or: 3862, pa: 3862, sa: 3862, ta: 3862, te: 3862, ur: 3862 },
+    crosslingual_group_size_freq: { 14: 3204, 13: 291, 12: 168, 11: 92, 10: 61, 9: 47 }, n_groups: 3863
+  },
+  qrels: {
+    singletons: 31182, multi_positive: 22886,
+    coverage_by_lang: {
+      as:{total:3862,with_positive:3690}, bn:{total:3862,with_positive:3781}, gu:{total:3862,with_positive:3742},
+      hi:{total:3862,with_positive:3806}, kn:{total:3862,with_positive:3711}, ml:{total:3862,with_positive:3699},
+      mr:{total:3862,with_positive:3688}, ne:{total:3862,with_positive:3654}, or:{total:3862,with_positive:3620},
+      pa:{total:3862,with_positive:3702}, sa:{total:3862,with_positive:3521}, ta:{total:3862,with_positive:3760},
+      te:{total:3862,with_positive:3748}, ur:{total:3862,with_positive:3717}
+    }
+  },
+  qdrant: {
+    collection: "msmarco_xi_val14_73ca3e90__passage", total_points: 1488730, has_topics: true,
+    chunk_tok: { p50: 74, p90: 214, p95: 268, p99: 320, p100: 320, mean: 96.3, n: 1488730 }
+  },
+  /* eval curves live in separate artifacts (do not exist yet) — illustrative, clearly labeled */
+  eval: {
+    latency_ms: { p50: 51.8, p70: 55.9, p90: 60.3, p100: 78.7, n: 43, source: "live Forge run" },
+    per_language: {
+      en:{recall10:0.91,mrr10:0.79}, hi:{recall10:0.86,mrr10:0.71}, bn:{recall10:0.83,mrr10:0.68},
+      ta:{recall10:0.81,mrr10:0.66}, te:{recall10:0.80,mrr10:0.65}, ml:{recall10:0.78,mrr10:0.63},
+      kn:{recall10:0.79,mrr10:0.64}, gu:{recall10:0.82,mrr10:0.67}, ur:{recall10:0.77,mrr10:0.62},
+      or:{recall10:0.75,mrr10:0.60}, pa:{recall10:0.80,mrr10:0.65}
+    },
+    risk_coverage: [
+      {coverage:1.00,risk:0.18},{coverage:0.94,risk:0.12},{coverage:0.87,risk:0.083},
+      {coverage:0.78,risk:0.055},{coverage:0.66,risk:0.034},{coverage:0.52,risk:0.019},
+      {coverage:0.38,risk:0.010},{coverage:0.24,risk:0.004},{coverage:0.12,risk:0.001}
+    ],
+    accuracy_latency: [
+      {name:"extractive (live default)", latency_ms:51.8, accuracy:0.82, budget:true},
+      {name:"vectorless PageIndex",      latency_ms:28.0, accuracy:0.74, budget:true},
+      {name:"hybrid + rerank",           latency_ms:60.3, accuracy:0.85, budget:true},
+      {name:"quality mode · 7B",         latency_ms:3500, accuracy:0.89, budget:false}
+    ]
+  }
+};
+
+const LANG_NAMES = { as:"Assamese", bn:"Bengali", gu:"Gujarati", hi:"Hindi", kn:"Kannada",
+  ml:"Malayalam", mr:"Marathi", ne:"Nepali", or:"Odia", pa:"Punjabi", sa:"Sanskrit",
+  ta:"Tamil", te:"Telugu", ur:"Urdu", en:"English" };
+const SEQ = ["#bcd2ff","#8fb2ff","#6e9bff","#4f86ff","#2e6bff","#2456cc","#1b4099","#132f70"];
+const langName = c => LANG_NAMES[String(c)] || String(c);
+
+/* ---------- safe helpers (coerce everything; strings only via textContent) ---------- */
+const coerce = (v,d) => { const n = Number(v); return Number.isFinite(n) ? n : (d||0); };
+const S = v => (v==null ? "" : String(v));
+const fmt = v => { const n = Number(v); return Number.isFinite(n) ? Math.round(n).toLocaleString("en-US") : "—"; };
+const fmt1 = v => { const n = Number(v); return Number.isFinite(n) ? n.toFixed(1) : "—"; };
+const pct0 = v => { const n = Number(v); return Number.isFinite(n) ? Math.round(n*100)+"%" : "—"; };
+function el(tag, cls, text){ const e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=text; return e; }
+function sv(tag, attrs){ const e=document.createElementNS(SVGNS,tag); if(attrs) for(const k in attrs) e.setAttribute(k, attrs[k]); return e; }
+function svText(x,y,text,attrs){ const t=sv("text",Object.assign({x:x,y:y},attrs||{})); t.textContent=S(text); return t; }
+function clear(node){ while(node.firstChild) node.removeChild(node.firstChild); }
+function lumHex(hex){ hex=S(hex).replace("#",""); if(hex.length<6) return 0; const r=parseInt(hex.slice(0,2),16)/255,g=parseInt(hex.slice(2,4),16)/255,b=parseInt(hex.slice(4,6),16)/255; const f=c=>c<=.03928?c/12.92:Math.pow((c+.055)/1.055,2.4); return .2126*f(r)+.7152*f(g)+.0722*f(b); }
+const seqColor = frac => { frac = frac<0?0:frac>1?1:frac; const p=frac*(SEQ.length-1); const i=Math.min(SEQ.length-2,Math.floor(p)); return SEQ[Math.round(p)] || SEQ[i]; };
+
+/* ---------- squarify treemap (classic Bruls/Huizing/van Wijk, pure fn) ---------- */
+function squarify(values, x, y, dx, dy){
+  const total = values.reduce((a,b)=>a+b,0) || 1;
+  const items = values.map(v => v*dx*dy/total);   // area-scaled
+  const rects = [];
+  function worst(row, side){
+    if(!row.length) return Infinity;
+    const s = row.reduce((a,b)=>a+b,0); if(s<=0) return Infinity;
+    const rmax = Math.max.apply(null,row), rmin = Math.min.apply(null,row);
+    const s2 = s*s, side2 = side*side;
+    return Math.max(side2*rmax/s2, s2/(side2*rmin));
+  }
+  function layoutRow(row, rx, ry, rdx, rdy){
+    const s = row.reduce((a,b)=>a+b,0); if(s<=0) return [rx,ry,rdx,rdy];
+    if(rdx >= rdy){ const w=s/rdy; let yy=ry; row.forEach(v=>{ const h=v/w; rects.push([rx,yy,w,h]); yy+=h; }); return [rx+w,ry,rdx-w,rdy]; }
+    const h=s/rdx; let xx=rx; row.forEach(v=>{ const w=v/h; rects.push([xx,ry,w,h]); xx+=w; }); return [rx,ry+h,rdx,rdy-h];
+  }
+  let cx=x, cy=y, cdx=dx, cdy=dy, row=[], i=0;
+  while(i < items.length){
+    const side = Math.min(cdx,cdy), v = items[i];
+    if(!row.length || worst(row,side) >= worst(row.concat(v),side)){ row.push(v); i++; }
+    else { [cx,cy,cdx,cdy] = layoutRow(row,cx,cy,cdx,cdy); row=[]; }
+  }
+  if(row.length) layoutRow(row,cx,cy,cdx,cdy);
+  return rects;
+}
+
+/* =========================== renderers =========================== */
+function renderProv(D){
+  const box=$("prov"); clear(box);
+  const man=el("span","p"); man.appendChild(el("span",null,"manifest")); man.appendChild(el("b",null,S(D.manifest||"—"))); box.appendChild(man);
+  const git=el("span","p"); git.appendChild(el("span",null,"git")); git.appendChild(el("b",null,S((D.meta&&D.meta.git_sha||"—")).slice(0,10))); box.appendChild(git);
+  const src=el("span","p"); const led=el("span","led"); src.appendChild(led); src.appendChild(document.createTextNode((D.meta&&D.meta.ran_qdrant)?"live index scanned":"realization + shards")); box.appendChild(src);
+}
+
+function renderBanner(D, isReal){
+  const b=$("banner"); clear(b);
+  b.className = "banner " + (isReal ? "live" : "sample");
+  const pill=el("span","tagpill", isReal ? "live data" : "sample data"); b.appendChild(pill);
+  // per-section honesty: the fetched file may carry corpus truth but no `eval` block —
+  // a green "live" banner must not vouch for the illustrative eval placeholders.
+  // NOTE: D.eval is ALWAYS truthy (the shallow SAMPLE merge backfills it) — provenance
+  // must come from the FETCHED object, stashed as __evalFromFile by loadReal.
+  const evalReal = isReal && !!D.__evalFromFile;
+  const msg = isReal
+    ? ("Rendering the generated data_stats.json for this build."
+       + (evalReal ? "" : " Evaluation cards (recall / risk–coverage / frontier) are still ILLUSTRATIVE — the sealed evaluation has not written its numbers yet."))
+    : "Illustrative SAMPLE, schema-faithful. Drop eval/eda/data_stats.json beside this page (or serve it) to render the real numbers.";
+  b.appendChild(el("span","t", msg));
+}
+
+function renderStamp(D){
+  const box=$("stamp"); clear(box);
+  const scope=D.scope||{}, meta=D.meta||{};
+  const grid=el("div","stampgrid");
+  const kv=(k,v,cls)=>{ const c=el("div","kv"); c.appendChild(el("div","k",k)); c.appendChild(el("div","v"+(cls?" "+cls:""),v)); return c; };
+  // fetched realization wins over the compiled constant — a future build's stats file
+  // must never render its manifest hash beside the OLD frozen counts
+  const R = Object.assign({}, REALIZATION, D.realization || {});
+  grid.appendChild(kv("Manifest hash", S(D.manifest||"—"), "amber"));
+  grid.appendChild(kv("Git SHA", S(meta.git_sha||"—").slice(0,12), "small"));
+  grid.appendChild(kv("Source rows", fmt(R.source_rows)));
+  grid.appendChild(kv("Languages", fmt(scope.source_languages||14)));
+  grid.appendChild(kv("Indexed docs", fmt(R.indexed_docs)));
+  grid.appendChild(kv("Held-out docs", fmt(R.heldout_docs)));
+  box.appendChild(grid);
+  const line=el("div","stampline");
+  line.appendChild(el("span","seal","● sealed"));
+  const desc=el("div","desc");
+  desc.appendChild(el("b",null,"Sample validation split"));
+  desc.appendChild(document.createTextNode(" · 84k rows · 14 languages · 876k indexed · 10.1k held out"));
+  line.appendChild(desc);
+  box.appendChild(line);
+  if(scope.corpus_hash){ box.appendChild(el("div","note", "corpus_hash " + S(scope.corpus_hash).slice(0,32) + "…")); }
+}
+
+function renderLeak(D){
+  const box=$("leak"); clear(box);
+  const R=Object.assign({},REALIZATION,D.realization||{});
+  const lk=R.leakage||REALIZATION.leakage;
+  const row=el("div","leakrow");
+  const cell=(v,label)=>{ const c=el("div","leakcell"); c.appendChild(el("div","big",fmt(v))); c.appendChild(el("div","lbl",label)); return c; };
+  row.appendChild(cell(lk.family_intersection, "family intersection"));
+  row.appendChild(cell(lk.stable_doc_id_intersection, "stable_doc_id intersection"));
+  row.appendChild(cell(lk.exact_hash_intersection, "exact-hash intersection"));
+  box.appendChild(row);
+  const cap=el("div","leakcaption");
+  cap.appendChild(document.createTextNode("Families (exact ∪ SimHash H≤3 ∪ translation-link) are allocated whole, so the "));
+  cap.appendChild(el("b",null, fmt(R.heldout_queries)+"-query"));
+  cap.appendChild(document.createTextNode(" absent-evidence set shares "));
+  cap.appendChild(el("b",null,"zero"));
+  cap.appendChild(document.createTextNode(" passages, near-duplicates or translations with the "+fmt(lk.indexed_exact_hashes)+" indexed vs "+fmt(lk.heldout_exact_hashes)+" held-out distinct exact hashes. Abstain behaviour is measured against genuinely unseen evidence."));
+  box.appendChild(cap);
+}
+
+function renderComp(D){
+  const box=$("comp"); clear(box);
+  const comp=D.composition||{}, canon=comp.canonical_by_detected_lang||{};
+  const entries=Object.keys(canon).map(k=>[k, coerce(canon[k])]).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]);
+  if(!entries.length){ box.appendChild(el("div","note","no composition data")); return; }
+  const total=entries.reduce((a,e)=>a+e[1],0)||1, vmax=entries[0][1];
+
+  /* treemap */
+  const W=1000, H=380;
+  const wrap=el("div","figwrap");
+  const svg=sv("svg",{viewBox:"0 0 "+W+" "+H, width:W, height:H, role:"img","aria-label":"corpus composition treemap"});
+  const rects=squarify(entries.map(e=>e[1]), 0,0,W,H);
+  rects.forEach((r,i)=>{
+    const [x,y,w,h]=r; const [code,val]=entries[i]; const col=seqColor(val/vmax);
+    const g=sv("g");
+    g.appendChild(sv("rect",{x:x+1,y:y+1,width:Math.max(0,w-2),height:Math.max(0,h-2),rx:4,fill:col,stroke:"#060e28","stroke-width":2}));
+    if(w*h>2600){
+      const tcol = lumHex(col)>0.45 ? "#06122e" : "#eaf0ff";
+      const cx=x+8, cy=y+22;
+      g.appendChild(svText(cx,cy,langName(code),{fill:tcol,"font-size":16,"font-weight":700,"font-family":"var(--body)"}));
+      g.appendChild(svText(cx,cy+18,fmt(val),{fill:tcol,"font-size":13,"font-family":"var(--mono)","opacity":.92}));
+      g.appendChild(svText(cx,cy+34,(val/total*100).toFixed(1)+"%",{fill:tcol,"font-size":11,"font-family":"var(--mono)","opacity":.8}));
+    }
+    svg.appendChild(g);
+  });
+  wrap.appendChild(svg); box.appendChild(wrap);
+
+  const note=el("div","chartcap");
+  note.appendChild(el("b",null, fmt(coerce(comp.n_canonical_shards)||total)+" canonical passages"));
+  note.appendChild(document.createTextNode(" · ~"+Math.round((coerce(comp.english_canonical)/Math.max(1,coerce(comp.n_canonical_shards)||total))*100)+"% shared English answer passages, the rest per-language translations."));
+  box.appendChild(note);
+
+  /* Devanagari collapse note */
+  const cn=comp.collapse_note||{};
+  const keys=Object.keys(cn);
+  if(keys.length){
+    const cc=el("div","note");
+    cc.appendChild(el("b",null,"Script collapse: "));
+    cc.appendChild(document.createTextNode(keys.map(k=>langName(k)+" → "+langName(cn[k])).join(" · ")+". Four source languages share a script with a labeled sibling, so they carry no distinct detected label (fully indexed, folded in reporting)."));
+    box.appendChild(cc);
+  }
+}
+
+function renderSplit(D){
+  const box=$("split"); clear(box); const R=D.realization||REALIZATION;
+  const bars=el("div","splitbars");
+  function stackBar(caption, segs){   // segs: [{flow, min, color, dark, label, count}]
+    const holder=el("div");
+    holder.appendChild(el("div","splitlabels")).appendChild(el("span",null,caption));
+    const stack=el("div","stack"); const total=segs.reduce((a,s)=>a+coerce(s.flow),0)||1;
+    segs.forEach(s=>{ const v=coerce(s.flow);
+      const span=el("span");                       // proportion bar; the legend below is the accessible label
+      span.style.flex = Math.max(v, total*(s.min||0)); span.style.background=s.color;
+      stack.appendChild(span); });
+    holder.appendChild(stack);
+    const leg=el("div","legend"); leg.style.marginTop="8px";
+    segs.forEach(s=>{ const li=el("div","li"); const i=el("i"); i.style.background=s.color; li.appendChild(i);
+      li.appendChild(document.createTextNode(s.label+" "+fmt(s.flow))); leg.appendChild(li); });
+    holder.appendChild(leg);
+    return holder;
+  }
+  bars.appendChild(stackBar("documents — indexed vs held-out (canonical)", [
+    {flow:R.indexed_docs, color:"var(--cobalt)", label:"indexed"},
+    {flow:R.heldout_docs, min:0.015, color:"var(--volt)", dark:true, label:"held-out"} ]));
+  bars.appendChild(stackBar("queries — realizability", [
+    {flow:R.indexed_queries, color:"var(--green)", dark:true, label:"answerable"},
+    {flow:R.heldout_queries, min:0.03, color:"var(--coral)", label:"absent-evidence"},
+    {flow:R.excluded_queries, min:0.004, color:"var(--faint)", label:"excluded"} ]));
+  box.appendChild(bars);
+
+  const mk=el("div","minikv");
+  const cell=(k,v)=>{ const m=el("div","m"); m.appendChild(el("div","k",k)); m.appendChild(el("div","v",v)); return m; };
+  mk.appendChild(cell("Families", fmt(R.n_families)));
+  mk.appendChild(cell("Indexed / held-out families", fmt(R.indexed_families)+" / "+fmt(R.heldout_families)));
+  const ip=R.in_corpus_partition||{}, apr=R.absent_evidence_partition||{};
+  mk.appendChild(cell("Sealed queries", fmt(coerce(ip.sealed)+coerce(apr.sealed))));
+  mk.appendChild(cell("Calib / dev / sealed", fmt(R.calibration_queries)+" / "+fmt(R.dev_queries)+" / "+fmt(R.sealed_queries)));
+  box.appendChild(mk);
+  const reasons=R.excluded_reasons||{};
+  const rk=Object.keys(reasons);
+  if(rk.length) box.appendChild(el("div","note","Excluded: "+rk.map(k=>fmt(reasons[k])+" "+k).join("; ")+" — the only queries whose positive family straddled the split."));
+}
+
+function pctSeg(track, obj, color){
+  /* draw p50/p90/p99 markers + a fill to p90 on a log-ish normalized track (max=p100) */
+  const p50=coerce(obj.p50), p90=coerce(obj.p90), p99=coerce(obj.p99), p100=coerce(obj.p100)||1;
+  const norm=v=> Math.max(0, Math.min(100, Math.log10(Math.max(1,v))/Math.log10(Math.max(10,p100))*100));
+  const fill=el("span","seg"); fill.style.left="0%"; fill.style.width=norm(p90)+"%";
+  fill.style.background="linear-gradient(90deg,"+color+"88,"+color+")"; track.appendChild(fill);
+  [["p50",p50,"var(--ink)"],["p90",p90,"var(--volt)"],["p99",p99,"var(--coral-lt)"]].forEach(([nm,v,c])=>{
+    const m=el("span","seg"); m.style.left=norm(v)+"%"; m.style.width="2px"; m.style.background=c; track.appendChild(m);
+  });
+}
+function renderLen(D){
+  const box=$("len"); clear(box);
+  const L=D.lengths||{}, q=D.qdrant||{};
+  const rows=[
+    ["Passage length (chars)", L.passage_char_overall||{}, "var(--cobalt)"],
+    ["Passage length (word tokens)", L.passage_wordtok_overall||{}, "var(--cyan)"],
+    ["Indexed chunk (token_count)", q.chunk_tok||{}, "var(--teal)"]
+  ];
+  const wrap=el("div","pctbar");
+  rows.forEach(([name,obj,color])=>{
+    if(obj.p50==null && obj.p100==null) return;
+    const r=el("div","pctrow");
+    const top=el("div","top");
+    top.appendChild(el("span",null,name));
+    const b=el("b",null,"median "+fmt(obj.p50)); top.appendChild(b);
+    r.appendChild(top);
+    const track=el("div","track"); pctSeg(track,obj,color); r.appendChild(track);
+    const ticks=el("div","ticks");
+    ["p50 "+fmt(obj.p50),"p90 "+fmt(obj.p90),"p99 "+fmt(obj.p99),"max "+fmt(obj.p100)].forEach(t=>ticks.appendChild(el("span",null,t)));
+    r.appendChild(ticks); wrap.appendChild(r);
+  });
+  box.appendChild(wrap);
+  const over=coerce(L.passages_over_2000_chars);
+  box.appendChild(el("div","note","Markers: median · p90 · p99 on a log scale (max = "+fmt(L.max_passage_chars)+" chars). "+fmt(over)+" passages exceed 2,000 chars — these drive passage-aware splitting at max_tokens=320."));
+}
+
+function renderLangTable(D){
+  const box=$("langtable"); clear(box);
+  const comp=(D.composition&&D.composition.canonical_by_detected_lang)||{};
+  const perLang=(D.queries&&D.queries.per_source_lang)||{};
+  const cov=(D.qrels&&D.qrels.coverage_by_lang)||{};
+  const ev=(D.eval&&D.eval.per_language)||{};
+  const collapse=(D.composition&&D.composition.collapse_note)||{};
+  /* union of all language codes seen, source order by canonical size then queries */
+  const codes=new Set();
+  Object.keys(comp).forEach(k=>codes.add(k)); Object.keys(perLang).forEach(k=>codes.add(k));
+  Object.keys(cov).forEach(k=>codes.add(k));
+  // parenthesized: `x || y ? -1 : 1` parses as `(x || y) ? -1 : 1` — an inconsistent
+  // comparator that left the table in JSON key order (invisible with the size-ordered
+  // SAMPLE, alphabetical with a real file)
+  const arr=[...codes].sort((a,b)=> (coerce(comp[b])-coerce(comp[a])) || (coerce(perLang[b])-coerce(perLang[a])) || (S(a)<S(b)?-1:1));
+  const cmax=Math.max(1,...arr.map(c=>coerce(comp[c])));
+  const wrap=el("div","tablewrap");
+  const t=el("table");
+  const thead=el("thead"); const htr=el("tr");
+  [["Language","l"],["Canonical docs",""],["Queries",""],["Qrel coverage",""],["recall@10*",""],["MRR@10*",""]].forEach(([h,c])=>{
+    const th=el("th",c||null,h); htr.appendChild(th); });
+  thead.appendChild(htr); t.appendChild(thead);
+  const tb=el("tbody");
+  arr.forEach(code=>{
+    const tr=el("tr", collapse[code] ? "collapsed" : null);
+    const nameTd=el("td","l",langName(code)); tr.appendChild(nameTd);
+    const dv=coerce(comp[code]);
+    const dtd=el("td",null,dv?fmt(dv):"—");
+    if(dv){ const mini=el("span","mini"); mini.style.width=Math.max(4,Math.round(dv/cmax*54))+"px"; dtd.appendChild(mini); }
+    tr.appendChild(dtd);
+    tr.appendChild(el("td",null, perLang[code]!=null?fmt(perLang[code]):"—"));
+    const cc=cov[code]; const covv = cc&&cc.total ? coerce(cc.with_positive)/coerce(cc.total) : null;
+    tr.appendChild(el("td",null, covv!=null?pct0(covv):"—"));
+    const e=ev[code]||{};
+    const num2 = x => (typeof x==="number" && Number.isFinite(x)) ? x.toFixed(2) : "—";
+    tr.appendChild(el("td",null, num2(e.recall10)));
+    tr.appendChild(el("td",null, num2(e.mrr10)));
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb); wrap.appendChild(t); box.appendChild(wrap);
+  box.appendChild(el("div","note","* recall@10 / MRR@10 are illustrative until the sealed evaluation writes data_stats.json. Rows that fold into a Devanagari/Bengali sibling are marked."));
+}
+
+function renderRisk(D){
+  const box=$("risk"); clear(box);
+  const pts=((D.eval&&D.eval.risk_coverage)||[]).map(p=>[coerce(p.coverage),coerce(p.risk)]).sort((a,b)=>a[0]-b[0]);
+  const W=460,H=300,mL=52,mR=16,mT=14,mB=42;
+  const iw=W-mL-mR, ih=H-mT-mB;
+  const svg=sv("svg",{viewBox:"0 0 "+W+" "+H,width:W,height:H,role:"img","aria-label":"risk-coverage curve"});
+  const rmax=Math.max(0.2,...pts.map(p=>p[1]));
+  const X=c=> mL + c*iw, Y=r=> mT + (1 - r/rmax)*ih;
+  /* grid + axes */
+  for(let i=0;i<=5;i++){ const gx=mL+iw*i/5; svg.appendChild(sv("line",{x1:gx,y1:mT,x2:gx,y2:mT+ih,stroke:"rgba(234,240,255,.07)"})); svg.appendChild(svText(gx,H-16,(i*20)+"%",{fill:"#889ad6","font-size":10,"font-family":"var(--mono)","text-anchor":"middle"})); }
+  for(let i=0;i<=4;i++){ const gy=mT+ih*i/4; const rv=rmax*(1-i/4); svg.appendChild(sv("line",{x1:mL,y1:gy,x2:mL+iw,y2:gy,stroke:"rgba(234,240,255,.07)"})); svg.appendChild(svText(mL-8,gy+3,(rv*100).toFixed(0)+"%",{fill:"#889ad6","font-size":10,"font-family":"var(--mono)","text-anchor":"end"})); }
+  /* area + line */
+  if(pts.length){
+    let dLine="", dArea="M"+X(pts[0][0])+","+(mT+ih);
+    pts.forEach((p,i)=>{ const x=X(p[0]),y=Y(p[1]); dLine+=(i?"L":"M")+x+","+y; dArea+="L"+x+","+y; });
+    dArea+="L"+X(pts[pts.length-1][0])+","+(mT+ih)+"Z";
+    const grad=sv("linearGradient",{id:"rcg",x1:0,y1:0,x2:0,y2:1});
+    grad.appendChild(sv("stop",{offset:"0%","stop-color":"#2e6bff","stop-opacity":.34}));
+    grad.appendChild(sv("stop",{offset:"100%","stop-color":"#2e6bff","stop-opacity":0}));
+    const defs=sv("defs"); defs.appendChild(grad); svg.appendChild(defs);
+    svg.appendChild(sv("path",{d:dArea,fill:"url(#rcg)"}));
+    svg.appendChild(sv("path",{d:dLine,fill:"none",stroke:"#2e6bff","stroke-width":2.5,"stroke-linejoin":"round"}));
+    pts.forEach(p=>svg.appendChild(sv("circle",{cx:X(p[0]),cy:Y(p[1]),r:3.4,fill:"#6e9bff",stroke:"#060e28","stroke-width":1.5})));
+  }
+  svg.appendChild(svText(mL+iw/2,H-2,"coverage (answered share)",{fill:"#9aacde","font-size":10.5,"font-family":"var(--mono)","text-anchor":"middle","font-weight":700}));
+  const yl=svText(14,mT+ih/2,"selective risk",{fill:"#9aacde","font-size":10.5,"font-family":"var(--mono)","text-anchor":"middle","font-weight":700}); yl.setAttribute("transform","rotate(-90 14 "+(mT+ih/2)+")"); svg.appendChild(yl);
+  const wrap=el("div","figwrap"); wrap.appendChild(svg); box.appendChild(wrap);
+  box.appendChild(el("div","chartcap","Lower coverage (more abstentions) buys sharply lower error on what is answered — the OOD gate + cross-encoder veto turning recall into trustworthy answers."));
+}
+
+function renderFrontier(D){
+  const box=$("frontier"); clear(box);
+  const pts=(D.eval&&D.eval.accuracy_latency)||[];
+  const lat=(D.eval&&D.eval.latency_ms)||{};
+  const W=460,H=300,mL=48,mR=18,mT=16,mB=44;
+  const iw=W-mL-mR, ih=H-mT-mB;
+  const svg=sv("svg",{viewBox:"0 0 "+W+" "+H,width:W,height:H,role:"img","aria-label":"accuracy-latency frontier"});
+  const lmax=4000, amin=0.6, amax=0.95;
+  const X=v=> mL + Math.log10(Math.max(10,v))/Math.log10(lmax)*iw;
+  const Y=a=> mT + (1-(a-amin)/(amax-amin))*ih;
+  /* accuracy gridlines */
+  for(let a=0.6;a<=0.9+1e-9;a+=0.1){ const gy=Y(a); svg.appendChild(sv("line",{x1:mL,y1:gy,x2:mL+iw,y2:gy,stroke:"rgba(234,240,255,.07)"})); svg.appendChild(svText(mL-8,gy+3,a.toFixed(1),{fill:"#889ad6","font-size":10,"font-family":"var(--mono)","text-anchor":"end"})); }
+  [10,100,1000].forEach(v=>{ const gx=X(v); svg.appendChild(sv("line",{x1:gx,y1:mT,x2:gx,y2:mT+ih,stroke:"rgba(234,240,255,.07)"})); svg.appendChild(svText(gx,H-16,v>=1000?(v/1000)+"s":v+"ms",{fill:"#889ad6","font-size":10,"font-family":"var(--mono)","text-anchor":"middle"})); });
+  /* 200ms budget line */
+  const bx=X(200);
+  svg.appendChild(sv("line",{x1:bx,y1:mT,x2:bx,y2:mT+ih,stroke:"#ff6b4a","stroke-width":2,"stroke-dasharray":"5 4"}));
+  svg.appendChild(svText(bx-5,mT+12,"200 ms budget",{fill:"#ff8a6a","font-size":10,"font-family":"var(--mono)","text-anchor":"end","font-weight":700}));
+  /* points */
+  pts.forEach(p=>{
+    const x=X(coerce(p.latency_ms)), y=Y(coerce(p.accuracy));
+    const col = p.budget ? "#3df5a0" : "#c9a1ff";
+    svg.appendChild(sv("circle",{cx:x,cy:y,r:7,fill:col,"fill-opacity":.22}));
+    svg.appendChild(sv("circle",{cx:x,cy:y,r:4,fill:col,stroke:"#060e28","stroke-width":1.5}));
+    const anchor = x>W-140 ? "end" : "start"; const dx = anchor==="end" ? -10 : 10;
+    svg.appendChild(svText(x+dx,y+3,S(p.name),{fill:"#eaf0ff","font-size":10.5,"font-family":"var(--mono)","text-anchor":anchor}));
+  });
+  svg.appendChild(svText(mL+iw/2,H-2,"end-to-end latency (log)",{fill:"#9aacde","font-size":10.5,"font-family":"var(--mono)","text-anchor":"middle","font-weight":700}));
+  const yl=svText(13,mT+ih/2,"answer accuracy",{fill:"#9aacde","font-size":10.5,"font-family":"var(--mono)","text-anchor":"middle","font-weight":700}); yl.setAttribute("transform","rotate(-90 13 "+(mT+ih/2)+")"); svg.appendChild(yl);
+  const wrap=el("div","figwrap"); wrap.appendChild(svg); box.appendChild(wrap);
+  const cap=el("div","chartcap");
+  cap.appendChild(el("b",null,"Live P50/P70/P90/P100 = "+fmt1(lat.p50)+" / "+fmt1(lat.p70)+" / "+fmt1(lat.p90)+" / "+fmt1(lat.p100)+" ms"));
+  cap.appendChild(document.createTextNode(" over "+fmt(lat.n)+" queries ("+S(lat.source||"live")+"). Green configs land inside budget; the 7B quality mode is a deliberately out-of-budget, separately-timed elaboration."));
+  box.appendChild(cap);
+}
+
+function renderFooter(D){
+  const f=$("foot"); clear(f);
+  f.appendChild(el("h3",null,"Provenance & limitations"));
+  const ul=el("ul");
+  [
+    "Leakage 0/0/0, split sizes, family and query counts are the FROZEN realization.json (signed manifest 73ca3e90) — real, not sampled.",
+    "Composition, lengths, code-mixing and topics are a streaming pass over the source shards, capped at 6,000 rows/shard (the build cap) — the indexed sample, not the entire validation split.",
+    "Language = Unicode script detection: Marathi/Sanskrit/Nepali fold into Hindi and Assamese into Bengali (they share a script), so per-language reporting for those four is absorbed by the sibling.",
+    "recall@10 / MRR@10 and the risk–coverage and accuracy–latency curves are illustrative placeholders until the sealed evaluation writes data_stats.json; the live P50/P70/P90/P100 are measured over 43 queries on Forge.",
+    "This is a validation-split SAMPLE — never described as the entire validation set. Sealed query files are never opened; query analysis is from shards + realization counts only."
+  ].forEach(t=>ul.appendChild(el("li",null,t)));
+  f.appendChild(ul);
+  const br=el("div","brand");
+  br.appendChild(document.createTextNode("hhgvrag · Hacker House Goa 2026 · Task 2 · "));
+  br.appendChild(el("em",null,"#RAGInGoa"));
+  f.appendChild(br);
+}
+
+/* =========================== entry (global, testable) =========================== */
+function renderDossier(D){
+  D = D || {};
+  const isReal = !!(D.meta && D.meta.generated && D.meta.generated !== "sample");
+  try{ renderProv(D); }catch(e){}
+  try{ renderBanner(D, isReal); }catch(e){}
+  try{ renderStamp(D); }catch(e){}
+  try{ renderLeak(D); }catch(e){}
+  try{ renderComp(D); }catch(e){}
+  try{ renderSplit(D); }catch(e){}
+  try{ renderLen(D); }catch(e){}
+  try{ renderLangTable(D); }catch(e){}
+  try{ renderRisk(D); }catch(e){}
+  try{ renderFrontier(D); }catch(e){}
+  try{ renderFooter(D); }catch(e){}
+}
+
+/* SAMPLE first (instant), then a single fetch to ./data_stats.json overrides top-level keys when present */
+renderDossier(SAMPLE);
+(function loadReal(){
+  // only over http(s) — a file:// page cannot fetch a sibling file and would log a scheme error
+  if (location.protocol !== "http:" && location.protocol !== "https:") return;
+  fetch("./data_stats.json", { cache: "no-store" })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { if (j && typeof j === "object"){
+      const D = Object.assign({}, SAMPLE, j);
+      D.__evalFromFile = !!j.eval;      // banner honesty: did the FILE carry eval numbers?
+      renderDossier(D);
+    } })
+    .catch(() => {});   // absent / blocked → SAMPLE stays
+})();
+</script>
+</body>
+</html>

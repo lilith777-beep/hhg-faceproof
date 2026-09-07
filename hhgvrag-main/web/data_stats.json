@@ -1,0 +1,1116 @@
+{
+ "meta": {
+  "generated": "2026-08-17 12:57:40",
+  "seed": 20260817,
+  "git_sha": "",
+  "ran_shards": true,
+  "ran_qdrant": true,
+  "reservoir_per_lang": 25000,
+  "wall_seconds": 241.5,
+  "self_test": false
+ },
+ "manifest": "73ca3e90",
+ "scope": {
+  "manifest": "73ca3e90",
+  "scope_name": "msmarco_xi_validation_sample_14lang_6000_rows_per_shard",
+  "scope_type": "deterministic_validation_split_sample",
+  "source_languages": 14,
+  "rows_per_language_shard": 6000,
+  "source_rows": 84000,
+  "source_passages": 1670657,
+  "unique_canonical_docs": 885959,
+  "indexed_docs": 875859,
+  "indexed_families": 59773,
+  "heldout_docs": 10100,
+  "heldout_families": 399,
+  "excluded_queries": 14,
+  "public_wording": "Deterministic validation-split sample: 84k source rows across all 14 languages, producing 876k indexed canonical documents and a leakage-disjoint 10.1k-document absent-evidence holdout."
+ },
+ "realization": {
+  "source_rows": 84000,
+  "source_passages": 1670657,
+  "unique_canonical": 885959,
+  "n_families": 60172,
+  "indexed_docs": 875859,
+  "heldout_docs": 10100,
+  "indexed_families": 59773,
+  "heldout_families": 399,
+  "indexed_queries": 48649,
+  "heldout_queries": 5405,
+  "excluded_queries": 14,
+  "calibration_queries": 21628,
+  "dev_queries": 16225,
+  "sealed_queries": 16201,
+  "in_corpus_partition": {
+   "calibration": 19458,
+   "dev": 14601,
+   "sealed": 14590
+  },
+  "absent_evidence_partition": {
+   "calibration": 2170,
+   "dev": 1624,
+   "sealed": 1611
+  },
+  "excluded_reasons": {
+   "positive families split across indexed and held-out": 14
+  },
+  "query_groups": {
+   "indexed": 3476,
+   "heldout": 387
+  },
+  "leakage": {
+   "family_intersection": 0,
+   "stable_doc_id_intersection": 0,
+   "exact_hash_intersection": 0,
+   "indexed_exact_hashes": 875600,
+   "heldout_exact_hashes": 10096
+  }
+ },
+ "composition": {
+  "n_occurrences_shards": 1670657,
+  "n_canonical_shards": 885959,
+  "canonical_by_detected_lang": {
+   "en": 59021,
+   "hi": 461032,
+   "bn": 5335,
+   "ur": 58784,
+   "as": 8,
+   "pa": 2872,
+   "gu": 59082,
+   "kn": 59072,
+   "te": 59107,
+   "ml": 58925,
+   "mr": 116,
+   "ne": 18,
+   "or": 3606,
+   "sa": 111,
+   "ta": 58870
+  },
+  "occurrences_by_source_cfg": {
+   "as": 119406,
+   "bn": 119481,
+   "gu": 119400,
+   "hi": 119494,
+   "kn": 119352,
+   "ml": 119219,
+   "mr": 119465,
+   "ne": 119425,
+   "or": 119048,
+   "pa": 119382,
+   "sa": 119089,
+   "ta": 119110,
+   "te": 119390,
+   "ur": 119396
+  },
+  "occurrences_by_variant": {
+   "en": 835926,
+   "tr:hi": 465267,
+   "tr:bn": 5419,
+   "tr:as": 8,
+   "tr:gu": 59639,
+   "tr:pa": 2922,
+   "tr:kn": 59621,
+   "tr:te": 59663,
+   "tr:ml": 59501,
+   "tr:mr": 128,
+   "tr:ne": 18,
+   "tr:ur": 59339,
+   "tr:or": 3709,
+   "tr:sa": 114,
+   "tr:ta": 59383
+  },
+  "english_canonical": 59073,
+  "collapse_confusion": {
+   "as": {
+    "hi": 56420,
+    "bn": 2761,
+    "as": 8
+   },
+   "bn": {
+    "hi": 56647,
+    "bn": 2544
+   },
+   "gu": {
+    "gu": 59082,
+    "hi": 47,
+    "bn": 3,
+    "pa": 1
+   },
+   "hi": {
+    "hi": 59176
+   },
+   "kn": {
+    "kn": 59072,
+    "hi": 20,
+    "bn": 1,
+    "te": 1
+   },
+   "ml": {
+    "ml": 58925,
+    "hi": 7,
+    "bn": 1,
+    "pa": 1
+   },
+   "mr": {
+    "hi": 59074,
+    "mr": 116
+   },
+   "ne": {
+    "hi": 59087,
+    "ne": 18,
+    "ur": 1
+   },
+   "or": {
+    "hi": 55178,
+    "or": 3606,
+    "bn": 21
+   },
+   "pa": {
+    "hi": 56223,
+    "pa": 2867
+   },
+   "sa": {
+    "hi": 58755,
+    "sa": 111
+   },
+   "ta": {
+    "ta": 58870,
+    "hi": 16,
+    "bn": 1,
+    "pa": 1
+   },
+   "te": {
+    "te": 59106,
+    "hi": 17,
+    "bn": 1,
+    "pa": 1
+   },
+   "ur": {
+    "ur": 58751,
+    "hi": 347,
+    "bn": 1
+   }
+  },
+  "collapse_note": {
+   "mr": "hi",
+   "sa": "hi",
+   "ne": "hi",
+   "as": "bn"
+  }
+ },
+ "lengths": {
+  "passage_char_overall": {
+   "p50": 290,
+   "p90": 452,
+   "p95": 530,
+   "p99": 693,
+   "p100": 8179,
+   "mean": 305.53,
+   "n": 885959
+  },
+  "passage_wordtok_overall": {
+   "p50": 44,
+   "p90": 72,
+   "p95": 85,
+   "p99": 116,
+   "p100": 2053,
+   "mean": 47.1,
+   "n": 885959
+  },
+  "passage_char_by_lang": {
+   "en": {
+    "p50": 294,
+    "p90": 455,
+    "p95": 525,
+    "p99": 678,
+    "p100": 1283,
+    "mean": 305.52,
+    "n": 59021
+   },
+   "hi": {
+    "p50": 285,
+    "p90": 442,
+    "p95": 518,
+    "p99": 674,
+    "p100": 8179,
+    "mean": 299.98,
+    "n": 461032
+   },
+   "bn": {
+    "p50": 216,
+    "p90": 396,
+    "p95": 452,
+    "p99": 626,
+    "p100": 4078,
+    "mean": 248.36,
+    "n": 5335
+   },
+   "ur": {
+    "p50": 282,
+    "p90": 438,
+    "p95": 515,
+    "p99": 675,
+    "p100": 6431,
+    "mean": 295.94,
+    "n": 58784
+   },
+   "as": {
+    "p50": 202,
+    "p90": 517,
+    "p95": 517,
+    "p99": 517,
+    "p100": 517,
+    "mean": 250.38,
+    "n": 8
+   },
+   "pa": {
+    "p50": 211,
+    "p90": 380,
+    "p95": 428,
+    "p99": 559,
+    "p100": 7476,
+    "mean": 236.02,
+    "n": 2872
+   },
+   "gu": {
+    "p50": 277,
+    "p90": 429,
+    "p95": 504,
+    "p99": 652,
+    "p100": 2504,
+    "mean": 290.33,
+    "n": 59082
+   },
+   "kn": {
+    "p50": 302,
+    "p90": 469,
+    "p95": 550,
+    "p99": 713,
+    "p100": 2453,
+    "mean": 317.09,
+    "n": 59072
+   },
+   "te": {
+    "p50": 293,
+    "p90": 455,
+    "p95": 532,
+    "p99": 695,
+    "p100": 2300,
+    "mean": 307.42,
+    "n": 59107
+   },
+   "ml": {
+    "p50": 317,
+    "p90": 493,
+    "p95": 580,
+    "p99": 756,
+    "p100": 5772,
+    "mean": 332.72,
+    "n": 58925
+   },
+   "mr": {
+    "p50": 267,
+    "p90": 670,
+    "p95": 1013,
+    "p99": 1051,
+    "p100": 1242,
+    "mean": 336.16,
+    "n": 116
+   },
+   "ne": {
+    "p50": 327,
+    "p90": 451,
+    "p95": 825,
+    "p99": 825,
+    "p100": 825,
+    "mean": 352.39,
+    "n": 18
+   },
+   "or": {
+    "p50": 243,
+    "p90": 407,
+    "p95": 470,
+    "p99": 687,
+    "p100": 4027,
+    "mean": 261.15,
+    "n": 3606
+   },
+   "sa": {
+    "p50": 244,
+    "p90": 658,
+    "p95": 845,
+    "p99": 1193,
+    "p100": 4149,
+    "mean": 357.84,
+    "n": 111
+   },
+   "ta": {
+    "p50": 328,
+    "p90": 509,
+    "p95": 598,
+    "p99": 777,
+    "p100": 4058,
+    "mean": 344.31,
+    "n": 58870
+   }
+  },
+  "passage_wordtok_by_lang": {
+   "en": {
+    "p50": 49,
+    "p90": 77,
+    "p95": 91,
+    "p99": 119,
+    "p100": 230,
+    "mean": 51.86,
+    "n": 59021
+   },
+   "hi": {
+    "p50": 45,
+    "p90": 73,
+    "p95": 86,
+    "p99": 116,
+    "p100": 2036,
+    "mean": 48.28,
+    "n": 461032
+   },
+   "bn": {
+    "p50": 33,
+    "p90": 60,
+    "p95": 71,
+    "p99": 100,
+    "p100": 996,
+    "mean": 37.11,
+    "n": 5335
+   },
+   "ur": {
+    "p50": 60,
+    "p90": 94,
+    "p95": 110,
+    "p99": 146,
+    "p100": 2029,
+    "mean": 62.81,
+    "n": 58784
+   },
+   "as": {
+    "p50": 26,
+    "p90": 93,
+    "p95": 93,
+    "p99": 93,
+    "p100": 93,
+    "mean": 36.75,
+    "n": 8
+   },
+   "pa": {
+    "p50": 38,
+    "p90": 72,
+    "p95": 82,
+    "p99": 113,
+    "p100": 810,
+    "mean": 42.96,
+    "n": 2872
+   },
+   "gu": {
+    "p50": 46,
+    "p90": 72,
+    "p95": 85,
+    "p99": 113,
+    "p100": 907,
+    "mean": 48.53,
+    "n": 59082
+   },
+   "kn": {
+    "p50": 38,
+    "p90": 60,
+    "p95": 71,
+    "p99": 94,
+    "p100": 804,
+    "mean": 40.36,
+    "n": 59072
+   },
+   "te": {
+    "p50": 39,
+    "p90": 62,
+    "p95": 73,
+    "p99": 97,
+    "p100": 377,
+    "mean": 41.61,
+    "n": 59107
+   },
+   "ml": {
+    "p50": 35,
+    "p90": 56,
+    "p95": 65,
+    "p99": 87,
+    "p100": 1862,
+    "mean": 37.28,
+    "n": 58925
+   },
+   "mr": {
+    "p50": 43,
+    "p90": 114,
+    "p95": 155,
+    "p99": 201,
+    "p100": 213,
+    "mean": 54.49,
+    "n": 116
+   },
+   "ne": {
+    "p50": 45,
+    "p90": 55,
+    "p95": 134,
+    "p99": 134,
+    "p100": 134,
+    "mean": 49.94,
+    "n": 18
+   },
+   "or": {
+    "p50": 39,
+    "p90": 68,
+    "p95": 79,
+    "p99": 118,
+    "p100": 624,
+    "mean": 41.96,
+    "n": 3606
+   },
+   "sa": {
+    "p50": 43,
+    "p90": 114,
+    "p95": 139,
+    "p99": 241,
+    "p100": 2053,
+    "mean": 71.39,
+    "n": 111
+   },
+   "ta": {
+    "p50": 37,
+    "p90": 59,
+    "p95": 69,
+    "p99": 92,
+    "p100": 335,
+    "mean": 39.4,
+    "n": 58870
+   }
+  },
+  "max_passage_chars": 8179,
+  "top_longest_passages": [
+   {
+    "chars": 8179,
+    "lang": "hi",
+    "src_cfg": "ne"
+   },
+   {
+    "chars": 8173,
+    "lang": "hi",
+    "src_cfg": "hi"
+   },
+   {
+    "chars": 8171,
+    "lang": "hi",
+    "src_cfg": "ne"
+   },
+   {
+    "chars": 8165,
+    "lang": "hi",
+    "src_cfg": "sa"
+   },
+   {
+    "chars": 8163,
+    "lang": "hi",
+    "src_cfg": "ne"
+   },
+   {
+    "chars": 8155,
+    "lang": "hi",
+    "src_cfg": "mr"
+   },
+   {
+    "chars": 8030,
+    "lang": "hi",
+    "src_cfg": "sa"
+   },
+   {
+    "chars": 7476,
+    "lang": "pa",
+    "src_cfg": "pa"
+   },
+   {
+    "chars": 7357,
+    "lang": "hi",
+    "src_cfg": "sa"
+   },
+   {
+    "chars": 7172,
+    "lang": "hi",
+    "src_cfg": "ne"
+   },
+   {
+    "chars": 7161,
+    "lang": "hi",
+    "src_cfg": "sa"
+   },
+   {
+    "chars": 6559,
+    "lang": "hi",
+    "src_cfg": "ne"
+   },
+   {
+    "chars": 6431,
+    "lang": "ur",
+    "src_cfg": "ur"
+   },
+   {
+    "chars": 6379,
+    "lang": "hi",
+    "src_cfg": "ne"
+   },
+   {
+    "chars": 6166,
+    "lang": "hi",
+    "src_cfg": "sa"
+   },
+   {
+    "chars": 6149,
+    "lang": "hi",
+    "src_cfg": "sa"
+   },
+   {
+    "chars": 6138,
+    "lang": "hi",
+    "src_cfg": "sa"
+   },
+   {
+    "chars": 6103,
+    "lang": "hi",
+    "src_cfg": "sa"
+   },
+   {
+    "chars": 5938,
+    "lang": "hi",
+    "src_cfg": "sa"
+   },
+   {
+    "chars": 5772,
+    "lang": "ml",
+    "src_cfg": "ml"
+   }
+  ],
+  "passages_over_2000_chars": 173
+ },
+ "queries": {
+  "n_distinct": 83986,
+  "char": {
+   "p50": 31,
+   "p90": 54,
+   "p95": 64,
+   "p99": 92,
+   "p100": 8777,
+   "mean": 38.0,
+   "n": 83986
+  },
+  "wordtok": {
+   "p50": 5,
+   "p90": 9,
+   "p95": 10,
+   "p99": 15,
+   "p100": 1756,
+   "mean": 6.06,
+   "n": 83986
+  },
+  "per_source_lang": {
+   "as": 5999,
+   "bn": 5999,
+   "gu": 5999,
+   "hi": 5999,
+   "kn": 5999,
+   "ml": 5999,
+   "mr": 5999,
+   "ne": 5999,
+   "or": 5999,
+   "pa": 5999,
+   "sa": 5999,
+   "ta": 5999,
+   "te": 5999,
+   "ur": 5999
+  },
+  "crosslingual_group_size_freq": {
+   "14": 5999
+  },
+  "n_groups": 5999
+ },
+ "qrels": {
+  "positives_per_query_freq": {
+   "2": 51743,
+   "4": 1714,
+   "6": 182,
+   "1": 365,
+   "10": 28,
+   "5": 14,
+   "8": 13,
+   "3": 8,
+   "7": 1
+  },
+  "singletons": 365,
+  "multi_positive": 53703,
+  "coverage_by_lang": {
+   "as": {
+    "total": 5999,
+    "with_positive": 3862
+   },
+   "bn": {
+    "total": 5999,
+    "with_positive": 3862
+   },
+   "gu": {
+    "total": 5999,
+    "with_positive": 3862
+   },
+   "hi": {
+    "total": 5999,
+    "with_positive": 3862
+   },
+   "kn": {
+    "total": 5999,
+    "with_positive": 3863
+   },
+   "ml": {
+    "total": 5999,
+    "with_positive": 3862
+   },
+   "mr": {
+    "total": 5999,
+    "with_positive": 3862
+   },
+   "ne": {
+    "total": 5999,
+    "with_positive": 3861
+   },
+   "or": {
+    "total": 5999,
+    "with_positive": 3862
+   },
+   "pa": {
+    "total": 5999,
+    "with_positive": 3863
+   },
+   "sa": {
+    "total": 5999,
+    "with_positive": 3862
+   },
+   "ta": {
+    "total": 5999,
+    "with_positive": 3862
+   },
+   "te": {
+    "total": 5999,
+    "with_positive": 3862
+   },
+   "ur": {
+    "total": 5999,
+    "with_positive": 3861
+   }
+  }
+ },
+ "duplication": {
+  "mode": "full",
+  "sampled": false,
+  "n_occurrences_used": 1670657,
+  "n_canonical": 885959,
+  "n_families": 60172,
+  "family_size_freq": {
+   "15": 53096,
+   "30": 838,
+   "14": 1864,
+   "439": 1,
+   "3787": 1,
+   "13": 263,
+   "750": 1,
+   "183": 1,
+   "7": 12,
+   "26": 23,
+   "43": 10,
+   "1": 3077,
+   "45": 73,
+   "16": 17,
+   "10": 36,
+   "12": 111,
+   "18": 45,
+   "24": 28,
+   "75": 7,
+   "46": 3,
+   "29": 138,
+   "28": 48,
+   "19": 50,
+   "44": 6,
+   "105": 3,
+   "11": 62,
+   "17": 40,
+   "40": 2,
+   "90": 5,
+   "60": 17,
+   "826": 1,
+   "27": 24,
+   "23": 12,
+   "21": 29,
+   "89": 1,
+   "20": 35,
+   "9": 24,
+   "549": 1,
+   "120": 4,
+   "74": 2,
+   "58": 2,
+   "22": 28,
+   "2": 16,
+   "8": 11,
+   "42": 4,
+   "34": 6,
+   "59": 4,
+   "4": 11,
+   "38": 2,
+   "35": 4,
+   "135": 1,
+   "36": 3,
+   "25": 13,
+   "209": 1,
+   "6": 13,
+   "32": 2,
+   "37": 6,
+   "194": 1,
+   "5": 13,
+   "41": 2,
+   "33": 2,
+   "81": 1,
+   "52": 1,
+   "48": 1,
+   "68": 1,
+   "3": 6,
+   "53": 1,
+   "31": 2,
+   "39": 1,
+   "56": 1,
+   "49": 1
+  },
+  "exact_group_size_freq": {
+   "1": 885547,
+   "2": 99,
+   "3": 25,
+   "4": 7,
+   "5": 8,
+   "10": 2,
+   "6": 6,
+   "8": 1,
+   "7": 1
+  },
+  "family_lang_span_freq": {
+   "8": 51610,
+   "7": 1267,
+   "11": 1707,
+   "9": 1407,
+   "10": 818,
+   "15": 1,
+   "13": 24,
+   "5": 44,
+   "1": 3090,
+   "6": 113,
+   "12": 25,
+   "4": 28,
+   "2": 12,
+   "3": 21,
+   "14": 5
+  },
+  "multilingual_families": 57082,
+  "largest_family": 3787,
+  "singleton_families": 3077
+ },
+ "lexical": {
+  "token_budget": 300000,
+  "vocab": {
+   "en": {
+    "tokens_counted": 300000,
+    "vocab_size": 24942,
+    "type_token_ratio": 0.08314,
+    "reached_budget": true,
+    "reservoir_passages": 25000
+   },
+   "hi": {
+    "tokens_counted": 300000,
+    "vocab_size": 69604,
+    "type_token_ratio": 0.23201333333333332,
+    "reached_budget": true,
+    "reservoir_passages": 25000
+   },
+   "bn": {
+    "tokens_counted": 198004,
+    "vocab_size": 38409,
+    "type_token_ratio": 0.1939809296781883,
+    "reached_budget": false,
+    "reservoir_passages": 5335
+   },
+   "ur": {
+    "tokens_counted": 300000,
+    "vocab_size": 18215,
+    "type_token_ratio": 0.06071666666666667,
+    "reached_budget": true,
+    "reservoir_passages": 25000
+   },
+   "as": {
+    "tokens_counted": 294,
+    "vocab_size": 208,
+    "type_token_ratio": 0.7074829931972789,
+    "reached_budget": false,
+    "reservoir_passages": 8
+   },
+   "pa": {
+    "tokens_counted": 123390,
+    "vocab_size": 19558,
+    "type_token_ratio": 0.15850555150336332,
+    "reached_budget": false,
+    "reservoir_passages": 2872
+   },
+   "gu": {
+    "tokens_counted": 300000,
+    "vocab_size": 38243,
+    "type_token_ratio": 0.12747666666666665,
+    "reached_budget": true,
+    "reservoir_passages": 25000
+   },
+   "kn": {
+    "tokens_counted": 300000,
+    "vocab_size": 51559,
+    "type_token_ratio": 0.17186333333333334,
+    "reached_budget": true,
+    "reservoir_passages": 25000
+   },
+   "te": {
+    "tokens_counted": 300000,
+    "vocab_size": 42439,
+    "type_token_ratio": 0.14146333333333333,
+    "reached_budget": true,
+    "reservoir_passages": 25000
+   },
+   "ml": {
+    "tokens_counted": 300000,
+    "vocab_size": 64587,
+    "type_token_ratio": 0.21529,
+    "reached_budget": true,
+    "reservoir_passages": 25000
+   },
+   "mr": {
+    "tokens_counted": 6321,
+    "vocab_size": 1851,
+    "type_token_ratio": 0.2928334124347413,
+    "reached_budget": false,
+    "reservoir_passages": 116
+   },
+   "ne": {
+    "tokens_counted": 899,
+    "vocab_size": 384,
+    "type_token_ratio": 0.4271412680756396,
+    "reached_budget": false,
+    "reservoir_passages": 18
+   },
+   "or": {
+    "tokens_counted": 151290,
+    "vocab_size": 28159,
+    "type_token_ratio": 0.18612598321105162,
+    "reached_budget": false,
+    "reservoir_passages": 3606
+   },
+   "sa": {
+    "tokens_counted": 7924,
+    "vocab_size": 1750,
+    "type_token_ratio": 0.22084805653710246,
+    "reached_budget": false,
+    "reservoir_passages": 111
+   },
+   "ta": {
+    "tokens_counted": 300000,
+    "vocab_size": 52879,
+    "type_token_ratio": 0.17626333333333333,
+    "reached_budget": true,
+    "reservoir_passages": 25000
+   }
+  },
+  "scripts": {
+   "en": {
+    "Latin": 0.941795685060219,
+    "Other": 0.03925782659300461,
+    "Digit": 0.018946488346776345
+   },
+   "hi": {
+    "Digit": 0.018674778489162623,
+    "Devanagari": 0.4908506376240042,
+    "Other": 0.031014570125332982,
+    "Latin": 0.006259525611811406,
+    "Bengali": 0.2300641029153558,
+    "Gurmukhi": 0.10967618203693687,
+    "Oriya": 0.11298583066466167,
+    "Arabic": 0.0003582060577215872,
+    "Kannada": 3.19379526989527e-05,
+    "Gujarati": 8.422852231390467e-05
+   },
+   "bn": {
+    "Bengali": 0.857233680412128,
+    "Other": 0.06282699651815024,
+    "Latin": 0.02080376846703421,
+    "Digit": 0.05416822041410171,
+    "Arabic": 0.0002908091218001172,
+    "Gujarati": 0.00048293526833472915,
+    "Kannada": 0.00023579117983793285,
+    "Malayalam": 0.00024452418649859703,
+    "Oriya": 0.0032539182817634734,
+    "Tamil": 0.00024976399049499555,
+    "Telugu": 0.00020959215985594032
+   },
+   "ur": {
+    "Arabic": 0.9585882239673558,
+    "Latin": 0.008871013446754117,
+    "Other": 0.012517437489629687,
+    "Digit": 0.020023325096260404
+   },
+   "as": {
+    "Latin": 0.9103448275862069,
+    "Other": 0.06379310344827586,
+    "Digit": 0.02586206896551724
+   },
+   "pa": {
+    "Latin": 0.028413115100688877,
+    "Other": 0.0814214485808418,
+    "Arabic": 0.0001603269965996582,
+    "Gurmukhi": 0.8218555647562501,
+    "Gujarati": 0.0003118448175619725,
+    "Malayalam": 0.0004016984090628799,
+    "Digit": 0.06666960305854579,
+    "Tamil": 0.00041931676033756763,
+    "Telugu": 0.000347081520111348
+   },
+   "gu": {
+    "Gujarati": 0.9362058935095923,
+    "Other": 0.038683567971771325,
+    "Digit": 0.019099136459793067,
+    "Latin": 0.005992894350137022,
+    "Arabic": 1.8507708706353745e-05
+   },
+   "kn": {
+    "Kannada": 0.9361309917095096,
+    "Other": 0.040739693333327644,
+    "Digit": 0.017147718142380773,
+    "Latin": 0.005971928438661049,
+    "Arabic": 9.526194119096479e-06,
+    "Malayalam": 1.4218200177755938e-07
+   },
+   "te": {
+    "Kannada": 3.219886493807728e-05,
+    "Other": 0.03874873727031971,
+    "Latin": 0.010413587742945629,
+    "Telugu": 0.9332275667391957,
+    "Digit": 0.0175673742701096,
+    "Arabic": 1.0535112491260308e-05
+   },
+   "ml": {
+    "Malayalam": 0.9474807277693037,
+    "Digit": 0.015515326355914976,
+    "Other": 0.03289966643660596,
+    "Latin": 0.004091784414352187,
+    "Arabic": 1.2495023823173648e-05
+   },
+   "mr": {
+    "Latin": 0.898500541972781,
+    "Other": 0.06274840419125617,
+    "Digit": 0.038751053835962904
+   },
+   "ne": {
+    "Other": 0.08952551477170993,
+    "Latin": 0.8768128916741271,
+    "Digit": 0.033661593554162934
+   },
+   "or": {
+    "Oriya": 0.7556521016553536,
+    "Other": 0.0791895750056121,
+    "Latin": 0.1117819452729963,
+    "Digit": 0.053331729284515676,
+    "Arabic": 4.4648781522349816e-05
+   },
+   "sa": {
+    "Latin": 0.7863710905470306,
+    "Other": 0.11491156143844442,
+    "Digit": 0.098717348014525
+   },
+   "ta": {
+    "Tamil": 0.9497572781940004,
+    "Other": 0.029024769924171145,
+    "Digit": 0.015231449454871555,
+    "Latin": 0.005967961087211934,
+    "Arabic": 1.8410766929875348e-05,
+    "Telugu": 1.305728151054989e-07
+   }
+  }
+ },
+ "qdrant": {
+  "collection": "msmarco_xi_val14_73ca3e90__passage",
+  "total_points": 958999,
+  "summary_points_in_passage_collection": 0,
+  "chunks_by_lang": {
+   "hi": 497811,
+   "en": 58349,
+   "gu": 62960,
+   "ml": 68255,
+   "ta": 68966,
+   "te": 66267,
+   "ur": 58416,
+   "kn": 66243,
+   "bn": 5101,
+   "or": 3563,
+   "sa": 138,
+   "mr": 137,
+   "pa": 2764,
+   "ne": 20,
+   "as": 9
+  },
+  "docs_by_lang": {
+   "hi": 456288,
+   "en": 58347,
+   "gu": 58409,
+   "ml": 58255,
+   "ta": 58195,
+   "te": 58431,
+   "ur": 58112,
+   "kn": 58396,
+   "bn": 5036,
+   "or": 3426,
+   "sa": 110,
+   "mr": 114,
+   "pa": 2714,
+   "ne": 18,
+   "as": 8
+  },
+  "chunk_char": {
+   "p50": 281,
+   "p90": 391,
+   "p95": 421,
+   "p99": 494,
+   "p100": 8163,
+   "mean": 278.91,
+   "n": 958999
+  },
+  "chunk_tok": {
+   "p50": 189,
+   "p90": 278,
+   "p95": 297,
+   "p99": 317,
+   "p100": 7984,
+   "mean": 181.91,
+   "n": 958999
+  },
+  "topic_overall": {
+   "business": 129834,
+   "technology": 184077,
+   "geography": 152026,
+   "health": 121318,
+   "science": 50978,
+   "history": 35955,
+   "general": 259385,
+   "travel": 25426
+  },
+  "has_topics": true
+ }
+}

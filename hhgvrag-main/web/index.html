@@ -1,0 +1,1411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>hhgvrag — voice RAG · #RAGInGoa</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%230b1f16'/%3E%3Ctext x='50' y='72' font-size='58' text-anchor='middle'%3E%F0%9F%8E%99%3C/text%3E%3C/svg%3E">
+<meta name="description" content="Voice-enabled RAG: speak a question, get a grounded cited answer in under 200 ms. Hacker House Goa 2026 · Task 2." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Yatra+One&family=Space+Grotesk:wght@400;500;600;700&family=Victor+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --void:#060e28; --paper:#081642; --surface:#0c2160; --deep:#071540;
+  --well:#0a1a46; --chip:#0b1c4e;
+  --ink:#eaf0ff; --mut:#9aacde; --faint:#889ad6;
+  --hair:rgba(234,240,255,.12); --hair2:rgba(234,240,255,.22);
+  --cobalt:#2e6bff; --cobalt-t:#6e9bff; --volt:#fee101; --green:#3df5a0;
+  --coral:#ff6b4a; --coral-lt:#ff8a6a; --violet:#c9a1ff; --cyan:#7fd0ff;
+  --mono:'Victor Mono',ui-monospace,'Cascadia Code',monospace;
+  --body:'Space Grotesk',system-ui,-apple-system,Segoe UI,sans-serif;
+  --disp:'Yatra One',var(--body);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  font-family:var(--body); background:var(--void); color:var(--ink);
+  min-height:100dvh; line-height:1.55; letter-spacing:.1px;
+  background-image:
+    radial-gradient(1200px 620px at 50% -10%, rgba(46,107,255,.20), transparent 60%),
+    radial-gradient(760px 460px at 100% 2%, rgba(46,107,255,.08), transparent 62%),
+    radial-gradient(rgba(120,150,240,.055) 1px, transparent 1.5px);
+  background-size:auto,auto,23px 23px; background-attachment:fixed;
+}
+.wrap{max-width:800px;margin:0 auto;padding:22px 18px 72px}
+
+/* ---------- header ---------- */
+header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;padding:12px 0 4px}
+.mark{font-family:var(--disp);font-size:clamp(30px,6vw,46px);letter-spacing:.5px;color:var(--ink);line-height:1}
+.mark em{font-style:normal;color:var(--volt)}
+.tag{font-family:var(--disp);font-size:clamp(15px,3vw,20px);color:var(--cobalt-t)}
+.status{margin-left:auto;display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11.5px;color:var(--mut);
+  background:rgba(9,20,58,.66);border:1px solid var(--hair);border-radius:999px;padding:6px 12px}
+.dot{width:9px;height:9px;border-radius:50%;background:#5b6ea6;box-shadow:0 0 0 3px rgba(46,107,255,.12)}
+.dot.ok{background:var(--green);box-shadow:0 0 10px rgba(61,245,160,.85)}
+.dot.bad{background:var(--coral);box-shadow:0 0 10px rgba(255,107,74,.7)}
+.sub{font-size:13.5px;color:var(--mut);margin:12px 0 26px;max-width:62ch}
+.sub b{color:var(--ink);font-weight:600}
+
+/* ---------- console card (the instrument) ---------- */
+.console{
+  position:relative;
+  background:linear-gradient(180deg,var(--surface),var(--deep));
+  border:1px solid var(--hair2);border-radius:20px;padding:28px 22px 22px;
+  box-shadow:0 26px 72px rgba(2,8,30,.6), inset 0 1px 0 rgba(234,240,255,.06);
+}
+.console::after{content:"";position:absolute;left:24px;right:24px;top:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(46,107,255,.75),transparent)}
+.stagebox{display:flex;flex-direction:column;align-items:center;gap:14px}
+
+/* mic — cobalt disc, amber phosphor dot-matrix */
+.mic{
+  width:120px;height:120px;border-radius:50%;border:1px solid var(--hair2);cursor:pointer;
+  background:
+    radial-gradient(rgba(254,225,1,.85) 1.4px, transparent 2px) center/12px 12px,
+    radial-gradient(circle at 50% 36%, #16307e, #071640 72%);
+  background-blend-mode:soft-light,normal;
+  display:grid;place-items:center;position:relative;
+  transition:transform .12s ease, box-shadow .25s ease;
+  -webkit-tap-highlight-color:transparent;touch-action:none;user-select:none;
+  box-shadow:0 0 0 1px rgba(46,107,255,.28), 0 12px 34px rgba(2,8,30,.55), inset 0 2px 12px rgba(46,107,255,.28);
+}
+.mic svg{width:40px;height:40px;fill:var(--ink);pointer-events:none;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))}
+.mic .lvl{position:absolute;inset:-4px;border-radius:50%;pointer-events:none;
+  box-shadow:0 0 0 2px rgba(254,225,1,.35);opacity:0;transform:scale(calc(1 + var(--lvl,0) * .12))}
+.mic.rec .lvl{opacity:1}
+.mic:hover{transform:scale(1.03)}
+.mic:active{transform:scale(.97)}
+.mic:focus-visible{outline:3px solid var(--volt);outline-offset:4px}
+.mic[aria-disabled="true"]{opacity:.55;cursor:not-allowed}
+.mic.rec{box-shadow:0 0 0 6px rgba(254,225,1,.22),0 0 48px rgba(254,225,1,.42),inset 0 2px 12px rgba(254,225,1,.16);animation:pulse 1.1s ease-in-out infinite}
+.mic.rec svg{fill:var(--volt)}
+@keyframes pulse{50%{box-shadow:0 0 0 14px rgba(254,225,1,.1),0 0 68px rgba(254,225,1,.55),inset 0 2px 12px rgba(254,225,1,.2)}}
+.holdhint{font-family:var(--mono);font-size:12px;color:var(--mut);min-height:18px;letter-spacing:.3px}
+.holdhint.hot{color:var(--volt)}
+
+/* input row */
+.row{display:flex;gap:10px;width:100%;margin-top:8px}
+input[type=text]{
+  flex:1;background:var(--well);border:1px solid var(--hair2);border-radius:12px;
+  color:var(--ink);font:400 15px var(--body);padding:13px 15px;min-width:0;min-height:48px;
+  transition:border-color .15s, box-shadow .15s;
+}
+input[type=text]::placeholder{color:var(--faint)}
+input[type=text]:focus{outline:none;border-color:var(--cobalt);box-shadow:0 0 0 3px rgba(46,107,255,.3)}
+button.primary{
+  font:600 15px var(--body);color:#06122e;background:var(--volt);border:0;border-radius:12px;
+  padding:13px 26px;cursor:pointer;transition:filter .15s, transform .1s, box-shadow .2s;min-height:48px;
+  box-shadow:0 6px 22px rgba(254,225,1,.18);letter-spacing:.2px;
+}
+button.primary:hover{filter:brightness(1.06)}
+button.primary:active{transform:scale(.97)}
+button.primary:disabled{opacity:.5;cursor:wait;box-shadow:none}
+button.primary:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+
+/* toggles — visible micro-captions (no hover-only tooltips) */
+.opts{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;justify-content:center}
+.opt{display:flex;align-items:flex-start;gap:9px;font-size:12.5px;color:var(--mut);cursor:pointer;min-height:44px;padding:4px 0}
+.opt input{appearance:none;-webkit-appearance:none;width:36px;height:20px;border-radius:999px;background:var(--chip);
+  border:1px solid var(--hair2);position:relative;cursor:pointer;transition:background .18s,border-color .18s;flex:none;margin-top:1px}
+.opt input::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;
+  background:var(--faint);transition:transform .18s, background .18s}
+.opt input:checked{background:var(--cobalt);border-color:var(--cobalt)}
+.opt input:checked::after{transform:translateX(16px);background:#eaf0ff}
+.opt input:focus-visible{outline:2px solid var(--volt);outline-offset:2px}
+.opt .txt{display:flex;flex-direction:column;gap:1px;max-width:240px}
+.opt .txt b{color:var(--ink);font-weight:600}
+.opt .txt small{font-size:10.5px;line-height:1.35;color:var(--faint)}
+
+/* thinking strip */
+.think{display:none;font-family:var(--mono);font-size:12px;color:var(--volt);margin-top:16px;text-align:center;letter-spacing:.4px}
+.think.on{display:block;animation:blink 1.2s steps(2) infinite}
+@keyframes blink{50%{opacity:.45}}
+
+/* ---------- result ---------- */
+.result{margin-top:28px}
+.badge{display:inline-flex;align-items:center;gap:7px;font:600 11.5px var(--mono);letter-spacing:.7px;text-transform:uppercase;
+  border-radius:999px;padding:5px 13px;border:1px solid}
+.badge::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
+.b-answer{color:var(--green);border-color:rgba(61,245,160,.5);background:rgba(61,245,160,.08)}
+.b-abstain{color:var(--coral-lt);border-color:rgba(255,138,106,.5);background:rgba(255,138,106,.09)}
+.b-refuse{color:var(--coral);border-color:var(--coral);background:rgba(255,107,74,.14)}
+.b-error{color:#ff8a8a;border-color:#ff8a8a;background:rgba(255,90,90,.1)}
+/* tier badge — which backend answered (honest fidelity signal): full=phosphor-green, edge=volt-amber */
+.tierbadge{display:none;align-items:center;gap:6px;font:600 10.5px var(--mono);letter-spacing:.7px;text-transform:uppercase;
+  border-radius:999px;padding:4px 11px;border:1px solid;margin-left:8px;vertical-align:middle}
+.tierbadge.on{display:inline-flex}
+.tierbadge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 7px currentColor}
+.tierbadge.full{color:var(--green);border-color:rgba(61,245,160,.5);background:rgba(61,245,160,.08)}
+.tierbadge.edge{color:var(--volt);border-color:rgba(254,225,1,.5);background:rgba(254,225,1,.08)}
+.transcript{font:italic 400 13.5px var(--mono);color:var(--mut);margin:14px 0 4px}
+.answer{font-size:clamp(18px,2.7vw,21px);font-weight:500;line-height:1.6;margin:10px 0 4px;overflow-wrap:break-word;color:var(--ink)}
+.whyline{font-size:12.5px;color:var(--mut);margin-top:6px;display:none}
+.whyline.on{display:block}
+
+/* perforated separator */
+.perf{height:1px;margin:20px 0;background:repeating-linear-gradient(90deg,var(--hair2) 0 6px,transparent 6px 13px)}
+
+/* signals */
+.signals{display:flex;flex-wrap:wrap;gap:7px}
+.chip{font:500 11px var(--mono);color:var(--mut);background:var(--chip);
+  border:1px solid var(--hair);border-radius:999px;padding:4px 11px;letter-spacing:.2px}
+.chip.hot{color:var(--volt);border-color:rgba(254,225,1,.42);background:rgba(254,225,1,.06)}
+
+/* ---------- budget meter (THE SIGNATURE) — a signal instrument, latency above citations ---------- */
+.budget{margin-top:20px;background:var(--well);border:1px solid var(--hair);border-radius:14px;
+  padding:15px 16px 14px;box-shadow:inset 0 1px 0 rgba(234,240,255,.05)}
+.meterhead{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:9px}
+.meterhead b{font:600 10px var(--mono);letter-spacing:1.5px;text-transform:uppercase;color:var(--mut)}
+.meterhead .ceil{font:500 10px var(--mono);letter-spacing:.5px;color:var(--faint)}
+.budget .scale{position:relative;height:34px;border:1px solid var(--hair2);border-radius:9px;overflow:hidden;
+  background:
+    repeating-linear-gradient(90deg,transparent 0 calc(25% - 1px),rgba(234,240,255,.1) calc(25% - 1px) 25%),
+    linear-gradient(180deg,#050f30,#04122c)}
+.budget .seg{position:absolute;top:0;bottom:0;min-width:2px;box-shadow:inset 0 0 0 1px rgba(6,14,40,.35)}
+.budget .limit{position:absolute;top:-5px;bottom:-5px;width:2px;background:var(--coral);right:0;box-shadow:0 0 9px rgba(255,107,74,.85)}
+.budget .labels{display:flex;justify-content:space-between;font:500 10px var(--mono);color:var(--faint);margin-top:5px;letter-spacing:.3px}
+.budget .readout{display:flex;align-items:baseline;gap:12px;margin-top:13px;flex-wrap:wrap}
+.budget .big{font:500 34px var(--mono);color:var(--volt);letter-spacing:1px;font-variant-numeric:tabular-nums;
+  text-shadow:0 0 18px rgba(254,225,1,.45),0 0 3px rgba(254,225,1,.55)}
+.budget .big.over{color:var(--coral);text-shadow:0 0 18px rgba(255,107,74,.45)}
+.budget .cap{font:500 12px var(--mono);color:var(--mut);letter-spacing:.2px}
+.legendbox{margin-top:10px}
+.legendbox>summary{font:500 10.5px var(--mono);color:var(--faint);cursor:pointer;letter-spacing:.5px;list-style:revert}
+.legendbox>summary:hover{color:var(--ink)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 13px;margin-top:9px}
+.legend span{font:500 10.5px var(--mono);color:var(--mut);display:flex;align-items:center;gap:5px}
+.legend i{width:9px;height:9px;border-radius:2px;display:inline-block}
+.sttnote{font:italic 500 11px var(--mono);color:var(--faint);margin-top:8px}
+
+/* elaboration (quality mode phase 2 — supplementary, never the answer of record) */
+.elab{margin:16px 0 4px;background:rgba(46,107,255,.05);border:1px solid var(--hair);
+  border-left:3px solid var(--violet);border-radius:10px;padding:12px 14px}
+.elabchip{display:inline-flex;align-items:center;gap:6px;font:600 11px var(--mono);letter-spacing:.4px;color:var(--violet);
+  border:1px solid rgba(201,161,255,.42);border-radius:999px;padding:3px 11px}
+.elabchip.ok{color:var(--green);border-color:rgba(61,245,160,.5)}
+.elabchip.warn{color:var(--coral-lt);border-color:rgba(255,138,106,.55)}
+.elabchip.dim{color:var(--faint);border-color:var(--hair2)}
+.elabtext{font-size:14.5px;line-height:1.66;color:#cfdcff;margin-top:9px;overflow-wrap:break-word}
+.elabtext.clipped{-webkit-mask-image:linear-gradient(180deg,#000 80%,transparent);
+  mask-image:linear-gradient(180deg,#000 80%,transparent)}
+
+/* citations — first-class evidence view */
+details.cites{margin-top:16px}
+details.cites summary{font:600 12px var(--mono);color:var(--mut);cursor:pointer;letter-spacing:.4px}
+details.cites summary:hover,details.cites[open] summary{color:var(--ink)}
+.cite{background:var(--well);border:1px solid var(--hair);border-left:3px solid var(--cobalt);
+  border-radius:10px;padding:12px 14px;margin-top:10px;font-size:13px;color:#cfdcff;line-height:1.6}
+.cite .idx{font:600 10.5px var(--mono);color:var(--cobalt-t);letter-spacing:.4px;margin-right:6px}
+.cite mark{background:rgba(254,225,1,.2);color:var(--ink);border-radius:3px;padding:0 2px;
+  box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.cite .meta{font:500 10.5px var(--mono);color:var(--faint);margin-top:8px}
+.cite .meta .cid{font-size:10px;opacity:.85;overflow-wrap:anywhere}
+
+/* ---------- examples + footer ---------- */
+.examples{margin-top:32px}
+.examples h3{font:500 12px var(--mono);color:var(--faint);letter-spacing:1px;margin-bottom:10px;text-transform:uppercase}
+.exrow{display:flex;flex-wrap:wrap;gap:8px}
+.ex{font:500 12.5px var(--body);color:var(--ink);background:var(--chip);border:1px solid var(--hair2);
+  border-radius:999px;padding:8px 15px;cursor:pointer;transition:border-color .15s,background .15s;display:inline-flex;align-items:center}
+.ex:hover{border-color:var(--cobalt);background:rgba(46,107,255,.1)}
+.ex:focus-visible{outline:2px solid var(--volt);outline-offset:2px}
+footer{margin-top:48px;border-top:1px solid var(--hair);padding-top:18px;font-size:12.5px;color:var(--mut);line-height:1.6}
+footer details{margin-top:10px}
+footer summary{cursor:pointer;font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+.bklist{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.bkrow{display:flex;gap:7px;align-items:center}
+.bkdot{width:8px;height:8px;border-radius:50%;background:#5b6ea6;flex:none;box-shadow:0 0 0 3px rgba(46,107,255,.1)}
+.bkdot.ok{background:var(--green);box-shadow:0 0 8px rgba(61,245,160,.75)}
+.bkdot.bad{background:var(--coral);box-shadow:0 0 8px rgba(255,107,74,.6)}
+.bkdot.skip{background:#3a4670;box-shadow:none}
+.bktier{font:600 9.5px var(--mono);letter-spacing:.5px;text-transform:uppercase;border-radius:6px;
+  padding:3px 7px;border:1px solid var(--hair2);flex:none;min-width:42px;text-align:center}
+.bktier.full{color:var(--green);border-color:rgba(61,245,160,.4)}
+.bktier.edge{color:var(--volt);border-color:rgba(254,225,1,.4)}
+.backendrow{display:flex;gap:8px;margin-top:10px}
+.backendrow input,.bkrow input{flex:1;background:var(--well);border:1px solid var(--hair2);border-radius:9px;
+  color:var(--ink);font:400 12px var(--mono);padding:9px 11px;min-width:0;min-height:42px}
+.backendrow input::placeholder,.bkrow input::placeholder{color:var(--faint)}
+.backendrow input[aria-invalid="true"],.bkrow input[aria-invalid="true"]{border-color:var(--coral)}
+.backendrow button,.bkbtn{font:600 12px var(--body);background:var(--chip);color:var(--ink);
+  border:1px solid var(--hair2);border-radius:9px;padding:0 16px;cursor:pointer;min-height:42px}
+.bkmini{font:600 13px var(--mono);background:var(--chip);color:var(--mut);border:1px solid var(--hair2);
+  border-radius:8px;width:32px;min-height:42px;flex:none;cursor:pointer;padding:0}
+.bkmini:hover:not(:disabled){color:var(--ink);border-color:var(--cobalt)}
+.bkmini:disabled{opacity:.35;cursor:not-allowed}
+.bkmini:focus-visible,.bkbtn:focus-visible{outline:2px solid var(--volt);outline-offset:2px}
+.bkadd{margin-top:9px}
+.bkadd .bkbtn{width:100%}
+.brand{margin-top:16px;font-family:var(--disp);font-size:14px;color:var(--faint)}
+.brand em{font-style:normal;color:var(--volt)}
+.navlink{display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:6px 2px;margin-top:6px;
+  font:500 12.5px var(--mono);color:var(--cobalt-t);text-decoration:none;letter-spacing:.3px}
+.navlink:hover{color:var(--ink);text-decoration:underline}
+.navlink:focus-visible{outline:2px solid var(--volt);outline-offset:3px;border-radius:6px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+@media (max-width:480px){
+  .wrap{padding:16px 12px 52px}
+  .console{padding:22px 14px 16px}
+  button.primary{padding:13px 18px;min-height:44px}
+  .ex{min-height:44px}
+  .backendrow input,.backendrow button,.bkrow input,.bkbtn,.bkmini{min-height:44px}
+  .bkmini{width:44px}
+  .budget .big{font-size:30px}
+}
+/* iOS Safari zooms the page on focusing any input under 16px — and stays zoomed */
+@media (pointer:coarse){
+  #q,.backendrow input,.bkrow input{font-size:16px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="mark">hhg<em>vrag</em></div>
+    <div class="tag" lang="hi">बोलिए · जवाब मिलेगा</div>
+    <div class="status"><span class="dot" id="dot"></span><span id="statustext">connecting…</span></div>
+  </header>
+  <p class="sub">Hold the mic, ask in <b>English or any of 13 Indian languages</b> —
+  <span lang="hi">हिंदी</span>, <span lang="bn">বাংলা</span>, <span lang="ta">தமிழ்</span>,
+  <span lang="ur">اردو</span> and more — grounded, cited answers from the indexed corpus in
+  <b>under 200&nbsp;ms</b>. <b>Grounded, or nothing</b>: if it can't prove an answer from
+  the sources, it declines.</p>
+
+  <section class="console" aria-label="ask console">
+    <div class="stagebox">
+      <button class="mic" id="mic" type="button" aria-label="Hold to talk" aria-describedby="hint">
+        <span class="lvl" aria-hidden="true"></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a4 4 0 0 0 4-4V6a4 4 0 1 0-8 0v5a4 4 0 0 0 4 4Zm6-4a6 6 0 0 1-12 0H4a8 8 0 0 0 7 7.94V22h2v-3.06A8 8 0 0 0 20 11h-2Z"/></svg>
+      </button>
+      <!-- aria-live: the whole voice state machine speaks through this line ("listening…",
+           "didn't catch any speech") — without it the honest-readiness design is invisible
+           to screen-reader users. Transitions are sparse (~2 per hold): no spam. -->
+      <div class="holdhint" id="hint" aria-live="polite">hold SPACE or the mic to talk</div>
+      <div class="row">
+        <input id="q" type="text" maxlength="2000" placeholder="…or type: what is a corporation?" autocomplete="off" aria-label="Type your question" />
+        <button class="primary" id="ask" type="button">Ask</button>
+      </div>
+      <div class="opts">
+        <label class="opt"><input type="checkbox" id="pi" />
+          <span class="txt"><b>Vectorless</b> (PageIndex)<small>navigates a summary tree · zero embeddings at query time</small></span></label>
+        <label class="opt"><input type="checkbox" id="qm" />
+          <span class="txt"><b>Quality mode</b> (LLM)<small>grounded answer lands first · an LLM elaboration streams in after, timed separately</small></span></label>
+      </div>
+      <div class="think" id="think">retrieving → reranking → grounding…</div>
+    </div>
+
+    <div class="result" id="result" hidden>
+      <div class="announce" aria-live="polite">
+        <span class="badge" id="decision">—</span>
+        <span class="tierbadge" id="tier" hidden></span>
+        <div class="transcript" id="transcript"></div>
+        <div class="answer" id="answer"></div>
+      </div>
+      <div class="whyline" id="why"></div>
+      <div class="perf"></div>
+      <div class="elab" id="elab" hidden aria-live="off">
+        <div class="elabchip" id="elabchip"></div>
+        <div class="elabtext" id="elabtext"></div>
+      </div>
+      <div class="signals" id="signals"></div>
+      <div class="budget" id="budget">
+        <div class="meterhead"><b>Latency budget</b><span class="ceil">200 ms ceiling · retrieval → answer</span></div>
+        <div class="scale" id="scale"><span class="limit" id="limit"></span></div>
+        <div class="labels"><span>0 ms</span><span>200 ms</span></div>
+        <div class="readout"><span class="big" id="total">—</span><span class="cap" id="totalcap"></span></div>
+        <details class="legendbox"><summary>stage breakdown</summary><div class="legend" id="legend"></div></details>
+        <div class="sttnote" id="sttnote"></div>
+      </div>
+      <details class="cites" id="citebox"><summary id="citesum">sources</summary><div id="cites"></div></details>
+    </div>
+  </section>
+
+  <section class="examples">
+    <h3>// try these</h3>
+    <div class="exrow" id="exrow">
+      <button class="ex" type="button">what is a corporation?</button>
+      <button class="ex" type="button" lang="hi">कॉर्पोरेशन क्या है?</button>
+      <button class="ex" type="button">how long does a tax refund take?</button>
+      <button class="ex" type="button">who is the king of westeros?</button>
+    </div>
+  </section>
+
+  <footer>
+    <div><b>full</b> tier: Voice → Sarvam STT → hybrid retrieval (BGE-M3 + Qdrant HNSW) →
+    cross-encoder rerank → grounded extraction → citation. <b>edge</b> fallback: the same
+    gates over vectorless PageIndex on a laptop. Off-topic or unprovable → it abstains.
+    <b>Grounded, or nothing.</b></div>
+    <details>
+      <summary>advanced · backend endpoints</summary>
+      <div id="backendlist" class="bklist" aria-label="Backend endpoints, priority order"></div>
+      <div class="bkadd">
+        <button id="addbackend" class="bkbtn" type="button">+ add fallback</button>
+        <button id="save" class="bkbtn" type="button">Save</button>
+      </div>
+    </details>
+    <div><a class="navlink" href="data.html">corpus dossier — dataset EDA &amp; leakage proof →</a></div>
+    <div class="brand">Hacker House Goa 2026 · Task 2 · <em>#RAGInGoa</em></div>
+  </footer>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+
+/* ---------- session ---------- */
+const sessionId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() :
+  'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random()*16|0; return (c==='x'?r:(r&0x3|0x8)).toString(16); });
+
+/* ---------- backends (prioritized list · per-request failover · self-healing) ----------
+   A priority-ordered list of {url, tier}. Each query routes to the highest-priority backend
+   believed live; a genuine backend-DOWN failure (network error, per-attempt timeout, or an
+   unapproved 5xx) marks that backend dead and fails the SAME query over to the next live
+   backend, retrying it once there. Empty slots (e.g. an un-provisioned edge tunnel) are
+   skipped entirely — never health-checked, never an error. Persisted at hhgvrag_backends_v1;
+   a legacy single-URL hhgvrag_backend_v2 value migrates into slot 1 on first load. */
+const DEFAULT_BACKEND = "https://goquest-z790-aorus-elite-ax.tail16e418.ts.net";
+const BK_KEY = "hhgvrag_backend_v2";          // legacy single-URL key (migration source + save mirror)
+const BK_LIST_KEY = "hhgvrag_backends_v1";    // new source of truth: [{url, tier}]
+const SUPPORTED_API = new Set(["1", "2"]);    // fail gracefully on anything outside this set
+const HEALTH_TIMEOUT_MS = 4000;               // short /health probe deadline
+const TIERS = new Set(["full", "edge"]);
+const tierOf = t => (TIERS.has(t) ? t : "full");
+
+function isLocalHost(h){ return h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "::1"; }
+function validBackend(u){
+  let url; try{ url = new URL(u); }catch(e){ return false; }
+  if (url.protocol === "https:") return true;                          // https required for remote
+  if (url.protocol === "http:" && isLocalHost(url.hostname)) return true; // http allowed only for localhost
+  return false;
+}
+const normUrl = u => (u == null ? "" : String(u)).trim().replace(/\/+$/, "");
+
+// entry: { url, tier, live, body }  · live: null=unknown | true | false · body: last /health json
+let backends = [];
+let legacyMode = true;   // built from compiled default + legacy migration → enables slot-0 self-heal
+function defaultBackends(){
+  // edge slot: laptop Tier-E via cloudflared quick tunnel (50k-leaf vectorless subset).
+  // Rotates if the tunnel restarts — a stale URL is simply dead-marked by the health
+  // cycle and the primary serves alone, so shipping it compiled-in is safe.
+  return [ { url: DEFAULT_BACKEND, tier: "full", live: null, body: null },
+           { url: "https://sees-spoken-difference-fighter.trycloudflare.com",
+             tier: "edge", live: null, body: null } ];
+}
+/* A stored list pins the world as it was when saved; a newer bundle may ship a whole new
+   tier (the edge slot) or a rotated quick-tunnel URL. Merge at load, RUNTIME-ONLY (never
+   persisted here, so every future bundle's defaults keep winning): a tier with no row at
+   all gets the compiled default appended at lowest priority; an edge row holding a
+   *.trycloudflare.com URL that differs from the compiled one is ephemeral by construction
+   — swap in the bundle's strictly-fresher URL. A row the user emptied deliberately (url
+   "") still counts as present and is left alone. Explicit Save persists as before. */
+function mergeCompiledDefaults(){
+  defaultBackends().forEach(d => {
+    const rows = backends.filter(b => b.tier === d.tier);
+    if (!rows.length){ backends.push(d); return; }
+    if (d.tier !== "edge" || !d.url) return;
+    rows.forEach(b => {
+      let h = null; try{ h = new URL(b.url).hostname; }catch(e){}
+      if (h && h.endsWith(".trycloudflare.com") && b.url !== d.url){
+        b.url = d.url; b.live = null; b.body = null;
+      }
+    });
+  });
+}
+(function initBackends(){
+  // 1 — the new-world list wins when present and shape-valid
+  let raw = null; try{ raw = localStorage.getItem(BK_LIST_KEY); }catch(e){}
+  if (raw){
+    let arr = null; try{ arr = JSON.parse(raw); }catch(e){ arr = null; }
+    if (Array.isArray(arr) && arr.length){
+      const cleaned = [];
+      arr.forEach(e => {
+        if (!e || typeof e !== "object") return;
+        const url = normUrl(e.url);
+        if (url && !validBackend(url)) return;               // drop invalid non-empty entries
+        cleaned.push({ url, tier: tierOf(e.tier), live: null, body: null });
+      });
+      if (cleaned.length){
+        backends = cleaned; legacyMode = false;
+        mergeCompiledDefaults();
+        return;
+      }
+    }
+  }
+  // 2 — compiled default + one-time migration of a legacy single URL into slot 1
+  backends = defaultBackends();
+  let stored = null; try{ stored = localStorage.getItem(BK_KEY); }catch(e){}
+  if (stored){
+    const s = normUrl(stored);
+    if (validBackend(s)) backends[0].url = s;                // migrate override into the primary slot
+    else { try{ localStorage.removeItem(BK_KEY); }catch(e){} } // stale / invalid → drop it
+  }
+})();
+
+function persistBackends(mirrorLegacy){
+  try{ localStorage.setItem(BK_LIST_KEY,
+    JSON.stringify(backends.map(b => ({ url: b.url, tier: b.tier })))); }catch(e){}
+  if (mirrorLegacy){                                         // keep the legacy single-URL key in sync
+    const primary = backends[0] && backends[0].url;
+    try{ if (primary) localStorage.setItem(BK_KEY, primary); }catch(e){}
+  }
+}
+// non-empty backends not known-dead, in priority order (routing target + failover candidates)
+function liveCandidates(){ return backends.filter(b => b.url && b.live !== false); }
+function activeBackend(){ return liveCandidates()[0] || null; }
+const api = p => ((activeBackend() && activeBackend().url) || (backends[0] && backends[0].url) || "") + p;
+
+/* ---------- advanced panel: editable, XSS-safe backend list (DOM + textContent only) ---------- */
+function bkDotClass(b){ return "bkdot" + (b.url ? (b.live === true ? " ok" : b.live === false ? " bad" : "") : " skip"); }
+function renderBackendList(){
+  const box = $("backendlist"); if (!box) return;
+  box.textContent = "";
+  backends.forEach((b, i) => {
+    const row = el("div", "bkrow");
+    const dot = el("span", bkDotClass(b)); dot.setAttribute("aria-hidden", "true");
+    const tier = el("span", "bktier " + tierOf(b.tier), tierOf(b.tier));
+    const input = document.createElement("input");
+    input.type = "url"; input.value = b.url;                 // value is a PROPERTY — never parsed as HTML
+    input.className = "bk-url"; input.setAttribute("data-i", String(i));
+    if (i === 0){ input.id = "backend"; input.placeholder = "https://…";
+      input.setAttribute("aria-label", "Primary backend endpoint URL"); }
+    else { input.placeholder = "https://… (optional)";
+      input.setAttribute("aria-label", "Fallback backend endpoint URL (" + tierOf(b.tier) + ")"); }
+    input.addEventListener("input", () => input.removeAttribute("aria-invalid"));
+    input.addEventListener("change", () => commitRowEdit(i, input));
+    const mk = (glyph, label, disabled, fn) => {
+      const btn = el("button", "bkmini", glyph); btn.type = "button";
+      btn.title = label; btn.setAttribute("aria-label", label);
+      btn.disabled = disabled; btn.onclick = fn; return btn;
+    };
+    row.appendChild(dot); row.appendChild(tier); row.appendChild(input);
+    row.appendChild(mk("▲", "move up", i === 0, () => moveBackend(i, -1)));
+    row.appendChild(mk("▼", "move down", i === backends.length - 1, () => moveBackend(i, 1)));
+    row.appendChild(mk("✕", "remove backend", backends.length <= 1, () => removeBackend(i)));
+    box.appendChild(row);
+  });
+}
+function readRowInputs(){   // pull current field values into the model (preserve edits across reorder)
+  const box = $("backendlist"); if (!box) return false;
+  let anyInvalid = false;
+  Array.prototype.forEach.call(box.querySelectorAll("input.bk-url"), inp => {
+    const i = num(inp.getAttribute("data-i"), -1);
+    if (i < 0 || i >= backends.length) return;
+    const v = normUrl(inp.value);
+    // an invalid non-empty URL never enters the model/storage — every caller of this
+    // (save/move/remove/add) would otherwise persist + probe it (http://evil.com hole)
+    if (v && !validBackend(v)){ inp.setAttribute("aria-invalid", "true"); anyInvalid = true; return; }
+    inp.removeAttribute("aria-invalid");
+    backends[i].url = v;
+  });
+  return anyInvalid;   // callers that re-render should keep an invalid row's typed text visible
+}
+function commitRowEdit(i, input){
+  const v = normUrl(input.value);
+  if (v && !validBackend(v)){ input.setAttribute("aria-invalid", "true"); return; }
+  input.removeAttribute("aria-invalid");
+  backends[i].url = v; backends[i].live = null; backends[i].body = null;   // URL changed → re-probe
+  legacyMode = false;                                        // explicit edit → the user owns the list
+  persistBackends(i === 0);
+  updateBackendDots(); health();
+}
+function moveBackend(i, d){
+  readRowInputs();
+  const j = i + d; if (j < 0 || j >= backends.length) return;
+  const t = backends[i]; backends[i] = backends[j]; backends[j] = t;
+  legacyMode = false;                                        // explicit reorder → the user owns the list
+  persistBackends(true); renderBackendList(); updateBackendDots(); health();
+}
+function removeBackend(i){
+  readRowInputs();
+  if (backends.length <= 1) return;
+  backends.splice(i, 1); legacyMode = false;
+  persistBackends(true); renderBackendList(); updateBackendDots(); health();
+}
+$("addbackend").onclick = () => {
+  readRowInputs();
+  backends.push({ url: "", tier: "edge", live: null, body: null });
+  legacyMode = false; persistBackends(false); renderBackendList();
+  const inputs = $("backendlist").querySelectorAll("input.bk-url");
+  const last = inputs[inputs.length - 1]; if (last){ try{ last.focus(); }catch(e){} }
+};
+$("save").onclick = () => {
+  const primary = $("backend");
+  const v = primary ? normUrl(primary.value) : "";
+  if (!validBackend(v)){                                     // the primary must be a valid non-empty URL
+    if (primary) primary.setAttribute("aria-invalid", "true");
+    $("save").textContent = "https required";
+    setTimeout(() => { $("save").textContent = "Save"; }, 1600);
+    return;
+  }
+  if (primary) primary.removeAttribute("aria-invalid");
+  const invalidRow = readRowInputs();                        // capture any fallback edits too
+  backends[0].url = v; backends[0].live = null; backends[0].body = null;
+  legacyMode = false;   // an explicit Save = user ownership — the slot-0 self-heal must
+                        // never revert a just-saved URL that is momentarily unreachable
+                        // (demo-day: tunnel saved seconds before it finishes starting)
+  persistBackends(true);                                     // mirror the primary into the legacy key
+  // an invalid fallback row keeps its typed text + aria-invalid on screen — a re-render
+  // would silently wipe the user's edit with zero feedback
+  if (!invalidRow) renderBackendList();
+  health();
+};
+
+/* ---------- health (single-flight · per-backend liveness · legacy slot-0 self-heal) ---------- */
+let healthBusy = false;
+function apiVersionOk(body){
+  // Never infer corpus state from collection names. Only gate on an explicit api_version.
+  if (body && body.api_version != null) return SUPPORTED_API.has(String(body.api_version));
+  return true;   // legacy / no version field → liveness only
+}
+async function pingHealth(target){
+  if (!target) return null;                                  // empty slot → never probed
+  const ctrl = new AbortController();
+  const t = setTimeout(() => { try{ ctrl.abort(); }catch(e){} }, HEALTH_TIMEOUT_MS);
+  try{
+    const r = await fetch(target + "/health", { signal: ctrl.signal });
+    if (!r.ok) return null;
+    let body = {}; try{ body = await r.json(); }catch(e){ body = {}; }
+    return body || {};
+  }catch(e){ return null; }
+  finally{ clearTimeout(t); }
+}
+function updateBackendDots(){
+  const box = $("backendlist"); if (!box) return;
+  Array.prototype.forEach.call(box.querySelectorAll(".bkrow"), (row, i) => {
+    const b = backends[i]; if (!b) return;
+    const dot = row.querySelector(".bkdot"); if (dot) dot.className = bkDotClass(b);
+  });
+}
+async function health(){
+  if (healthBusy) return;             // no overlapping / recursive health checks
+  healthBusy = true;
+  const dot = $("dot"), st = $("statustext");
+  try{
+    for (let i = 0; i < backends.length; i++){
+      const b = backends[i];
+      if (!b.url){ b.live = null; b.body = null; continue; }   // empty slot: skip — no probe, no error
+      const body = await pingHealth(b.url);
+      b.live = (body !== null); b.body = body;
+    }
+    // legacy self-heal: a migrated primary that died falls back once to the compiled default
+    if (legacyMode && backends[0] && backends[0].url &&
+        backends[0].url !== DEFAULT_BACKEND && backends[0].live === false){
+      const body = await pingHealth(DEFAULT_BACKEND);
+      if (body !== null){
+        backends[0].url = DEFAULT_BACKEND; backends[0].tier = "full";
+        backends[0].live = true; backends[0].body = body;
+        try{ localStorage.removeItem(BK_KEY); }catch(e){}
+        persistBackends(false); renderBackendList();
+      }
+    }
+    const act = activeBackend();
+    updateBackendDots();
+    if (act){
+      dot.className = "dot ok";
+      st.textContent = apiVersionOk(act.body) ? "live · corpus ready" : "live";
+    } else {
+      dot.className = "dot bad"; st.textContent = "backend unreachable";
+    }
+  } finally { healthBusy = false; }
+}
+renderBackendList();
+health();
+setInterval(() => { health(); }, 30000);   // lazy periodic re-check → a transiently-dead backend recovers
+
+/* ---------- decision + copy maps ---------- */
+const DEC = {
+  answer:["Answered · grounded", "b-answer"],
+  abstain_ood:["Declined · outside my corpus", "b-abstain"],
+  abstain_ungrounded:["Declined · couldn't verify", "b-abstain"],
+  refuse_unsafe:["Refused · unsafe request", "b-refuse"],
+  small_talk:["Assistant", "b-answer"],
+  error:["Error", "b-error"] };
+const WHY = {
+  abstain_ood:"The retrieval gate found no passage close enough to answer from — so it won't guess.",
+  abstain_ungrounded:"An answer was drafted but the grounding check couldn't verify it against the sources — so it was withheld.",
+  refuse_unsafe:"The safety filter matched this request." };
+const STAGE_COLORS = { safety:"#3a4e86", normalize:"#3e63c8", route:"#2e6bff",
+  embed:"#00b3ff", cache:"#4fe0c0", embed_ctx:"#00c2d6", retrieve:"#7fd0ff",
+  leaf_expand:"#9ae6c8", rerank:"#c9a1ff", generate:"#3df5a0", generate_quality:"#c9a1ff",
+  generate_fallback:"#eaf0ff", ground_check:"#fee101" };
+const LANG_ALLOW = new Set(["en","hi","bn","ta","te","mr","gu","kn","ml","pa","or","as","ur","ne","si","sa"]);
+const RTL_LANGS = new Set(["ur","ar","fa","ps","sd"]);   // Urdu (corpus) + Arabic-script siblings → dir=rtl
+
+/* ---------- safe coercion helpers ---------- */
+const num = (v, d) => { const n = Number(v); return Number.isFinite(n) ? n : (d || 0); };
+const clamp = (v, lo, hi) => v < lo ? lo : (v > hi ? hi : v);
+const safeText = v => (v == null ? "" : String(v));
+function safeLang(v){
+  const base = safeText(v).toLowerCase().replace(/[^a-z-]/g, "").split("-")[0];
+  return LANG_ALLOW.has(base) ? base : "en";
+}
+function el(tag, cls, text){
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+const reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+/* ---------- citation ↔ answer-segment mapping (verbatim-extract highlights) ---------- */
+let citesAutoOpened = false;    // sources auto-open once per page session, then stay as the user left them
+function citeSegments(answer, nCites){
+  // "…extract one. [1] extract two. [2]" → Map(0-based citation index → [segment texts]).
+  // Markers are stripped by slicing between them; out-of-range [n] is ignored.
+  const map = new Map();
+  if (!answer || !nCites) return map;
+  const re = /\s*\[(\d+)\]/g;
+  let last = 0, m;
+  while ((m = re.exec(answer)) !== null){
+    const seg = answer.slice(last, m.index).trim();
+    const n = parseInt(m[1], 10);
+    if (seg && Number.isFinite(n) && n >= 1 && n <= nCites){
+      const k = n - 1;
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(seg);
+    }
+    last = re.lastIndex;
+  }
+  return map;
+}
+function appendHighlighted(parent, text, segs){
+  // Split text nodes around indexOf matches; <mark> is built via textContent — never parsed as HTML.
+  const ranges = [];
+  (segs || []).forEach(s => {
+    if (!s) return;
+    const at = text.indexOf(s);                 // first verbatim occurrence; miss → no highlight
+    if (at !== -1) ranges.push([at, at + s.length]);
+  });
+  ranges.sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  ranges.forEach(rg => {
+    const prev = merged[merged.length - 1];
+    if (prev && rg[0] <= prev[1]) prev[1] = Math.max(prev[1], rg[1]);
+    else merged.push(rg);
+  });
+  let pos = 0;
+  merged.forEach(rg => {
+    if (rg[0] > pos) parent.appendChild(document.createTextNode(text.slice(pos, rg[0])));
+    parent.appendChild(el("mark", "hl", text.slice(rg[0], rg[1])));
+    pos = rg[1];
+  });
+  if (pos < text.length) parent.appendChild(document.createTextNode(text.slice(pos)));
+}
+
+/* ---------- tier badge — honest fidelity signal for the backend that answered ---------- */
+let lastAnswerBackend = null;          // set by runAsk to the backend that actually produced the answer
+function setTier(bk){
+  const t = $("tier"); if (!t) return;
+  if (!bk || !bk.url){ t.hidden = true; t.className = "tierbadge"; t.textContent = ""; t.removeAttribute("aria-label"); return; }
+  const tier = tierOf(bk.tier);
+  t.textContent = tier;
+  t.className = "tierbadge on " + tier;
+  t.hidden = false;
+  t.setAttribute("aria-label", tier === "edge"
+    ? "answered by the edge backend (reduced fidelity)"
+    : "answered by the full-fidelity backend");
+}
+
+/* ---------- render (pure DOM construction · no HTML sinks · every number coerced) ---------- */
+function render(r){
+  r = r || {};
+  resetElabUI();                       // a fresh grounded card starts with a clean elaboration slot
+  $("result").hidden = false;
+  setTier(lastAnswerBackend);          // reflect which backend (full / edge) produced this answer
+
+  const decKey = (r.decision != null && Object.prototype.hasOwnProperty.call(DEC, r.decision)) ? r.decision : null;
+  const pair = decKey ? DEC[decKey] : ["—", "b-abstain"];
+  const d = $("decision"); d.textContent = pair[0]; d.className = "badge " + pair[1];
+
+  const t = (r.trace && typeof r.trace === "object") ? r.trace : {};
+  const routeLang = safeLang(t.route && t.route.language);
+  const dir = RTL_LANGS.has(routeLang) ? "rtl" : "ltr";        // scoped bidi: Urdu answers/transcripts read right-to-left
+  const tr = $("transcript");
+  tr.textContent = (t.query != null && safeText(t.query) !== "") ? "“" + safeText(t.query) + "”" : "";
+  tr.dir = dir;
+
+  const ans = $("answer");
+  ans.textContent = safeText(r.answer);
+  ans.lang = routeLang;
+  ans.dir = dir;
+
+  const why = $("why");
+  if (decKey === "error" && r && r.reason){
+    // the backend sends a typed, honest reason — dropping it left "Error" with zero
+    // guidance (a no-STT edge tier looked identical to a transient failure and users
+    // retried voice forever when typing would have worked)
+    const reason = safeText(r.reason);
+    why.textContent = reason.indexOf("stt") === 0
+      ? "Voice isn't available on this backend right now — type your question instead."
+      : "The backend reported: " + reason;
+    why.className = "whyline on";
+  }
+  else if (decKey && WHY[decKey]){ why.textContent = WHY[decKey]; why.className = "whyline on"; }
+  else { why.textContent = ""; why.className = "whyline"; }
+
+  /* signal chips */
+  const sig = $("signals"); sig.textContent = "";
+  const chips = [];
+  if (t.cache_hit) chips.push(["⚡ cache hit", true]);
+  if (t.quality_mode) chips.push(["🧠 quality mode", true]);
+  if (t.retrieval_mode === "pageindex") chips.push(["🌲 vectorless", true]);
+  if (t.normalized) chips.push(["repaired → “" + safeText(t.normalized) + "”", false]);
+  if (t.route && typeof t.route === "object"){
+    if (t.route.intent != null) chips.push(["intent " + safeText(t.route.intent), false]);
+    if (t.route.language != null) chips.push(["lang " + safeLang(t.route.language), false]);
+  }
+  if (t.rerank_top != null && Number.isFinite(Number(t.rerank_top))) chips.push(["rerank " + num(t.rerank_top).toFixed(2), false]);
+  if (t.ood && typeof t.ood === "object"){
+    const sc = (t.ood.top_score != null && Number.isFinite(Number(t.ood.top_score))) ? " " + num(t.ood.top_score).toFixed(2) : "";
+    chips.push(["gate " + safeText(t.ood.signal || "") + sc, false]);
+  }
+  chips.forEach(c => sig.appendChild(el("span", "chip" + (c[1] ? " hot" : ""), c[0])));
+
+  /* citations — evidence cards with verbatim-extract highlights */
+  const cs = Array.isArray(r.citations) ? r.citations : [];
+  $("citesum").textContent = cs.length ? "sources [" + cs.length + "]" : "sources";
+  $("citebox").style.display = cs.length ? "" : "none";
+  const cbox = $("cites"); cbox.textContent = "";
+  const segMap = citeSegments(safeText(r.answer), cs.length);
+  cs.forEach((raw, i) => {
+    const c = raw || {};
+    const wrap = el("div", "cite");
+    wrap.appendChild(el("span", "idx", "[" + (i + 1) + "]"));
+    appendHighlighted(wrap, safeText(c.text), segMap.get(i));
+    const meta = el("div", "meta");
+    let m = "doc " + safeText(c.doc_id != null ? c.doc_id : "?");
+    if (c.passage_id != null) m += " · passage " + safeText(c.passage_id);
+    meta.appendChild(document.createTextNode(m));
+    if (c.chunk_id != null){
+      meta.appendChild(document.createTextNode(" · "));
+      meta.appendChild(el("span", "cid", safeText(c.chunk_id)));   // internal id — visually de-emphasized
+    }
+    wrap.appendChild(meta);
+    cbox.appendChild(wrap);
+  });
+  if (cs.length && !citesAutoOpened){ $("citebox").open = true; citesAutoOpened = true; }   // discoverable on first evidence
+
+  /* budget bar */
+  const rawStages = Array.isArray(t.stages) ? t.stages : [];
+  const stages = rawStages.filter(s => s && s.stage !== "stt");
+  const stt = rawStages.find(s => s && s.stage === "stt");
+  const total = Math.max(0, num(t.total_ms));
+  const scaleMax = Math.max(200, total);
+
+  const scale = $("scale");
+  Array.prototype.slice.call(scale.querySelectorAll(".seg")).forEach(n => n.remove());
+  const limit = $("limit");
+  let x = 0;
+  stages.forEach(s => {
+    const ms = Math.max(0, num(s.ms));
+    let w = clamp(ms / scaleMax * 100, 0, 100);
+    const left = clamp(x, 0, 100);
+    x += w;
+    const seg = el("span", "seg");
+    seg.style.left = left + "%";
+    seg.style.width = Math.max(w, 0.3) + "%";
+    seg.style.background = STAGE_COLORS[s.stage] || "#9db8a6";      // color from fixed map only
+    seg.title = safeText(s.stage) + " " + ms.toFixed(1) + " ms";    // property assignment — never parsed as HTML
+    scale.insertBefore(seg, limit);
+  });
+  limit.style.left = clamp(200 / scaleMax * 100, 0, 100) + "%";
+  limit.style.right = "auto";
+
+  const big = $("total");
+  big.textContent = total.toFixed(1) + " ms";
+  big.className = "big" + (total <= 200 ? "" : " over");
+  if (total <= 200){
+    const unused = clamp(Math.round((200 - total) / 200 * 100), 0, 100);
+    $("totalcap").textContent = unused + "% of the 200 ms budget unused";
+  } else {
+    $("totalcap").textContent = t.quality_mode ? "quality mode runs beyond the budget, by design" : "over budget";
+  }
+
+  const legend = $("legend"); legend.textContent = "";
+  stages.forEach(s => {
+    const ms = Math.max(0, num(s.ms));
+    const span = el("span");
+    const i = el("i"); i.style.background = STAGE_COLORS[s.stage] || "#9db8a6";
+    span.appendChild(i);
+    span.appendChild(document.createTextNode(safeText(s.stage) + " " + ms.toFixed(1) + (s.ok === false ? " ⚠" : "")));
+    legend.appendChild(span);
+  });
+
+  $("sttnote").textContent = stt ? "+ speech-to-text " + Math.max(0, num(stt.ms)).toFixed(0) + " ms upstream (not in the retrieval budget)" : "";
+
+  try{ $("result").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "nearest" }); }catch(e){}
+}
+
+/* ---------- busy + error (error is result-scoped — it must NOT flip the health dot) ---------- */
+function setBusy(b){
+  $("ask").disabled = b;
+  $("ask").textContent = b ? "…" : "Ask";
+  $("ask").setAttribute("aria-busy", b ? "true" : "false");
+  $("think").className = "think" + (b ? " on" : "");
+}
+function showError(msg){
+  resetElabUI();
+  $("result").hidden = false;
+  setTier(null);                                  // an error is not an answer — no fidelity badge
+  const d = $("decision"); d.textContent = "Error"; d.className = "badge b-error";
+  $("transcript").textContent = "";
+  const ans = $("answer"); ans.textContent = msg; ans.lang = "en"; ans.dir = "ltr";
+  $("transcript").dir = "ltr";
+  $("why").textContent = ""; $("why").className = "whyline";
+  $("signals").textContent = "";
+  $("citebox").style.display = "none"; $("cites").textContent = "";
+  Array.prototype.slice.call($("scale").querySelectorAll(".seg")).forEach(n => n.remove());
+  $("total").textContent = "—"; $("total").className = "big";
+  $("totalcap").textContent = ""; $("legend").textContent = ""; $("sttnote").textContent = "";
+}
+
+/* ---------- elaboration (quality mode phase 2 — streamed, supplementary, abortable) ---------- */
+const ELAB_CAP = 2000;                 // display cap (chars) with overflow fade
+const ELAB_DEADLINE_MS = 30000;
+let elabCtrl = null;                   // AbortController of the in-flight elaboration (SSE or fallback)
+
+function abortElab(){ if (elabCtrl){ try{ elabCtrl.abort(); }catch(e){} elabCtrl = null; } }
+function resetElabUI(){
+  $("elab").hidden = true;
+  const b = $("elabtext"); b.textContent = ""; b.className = "elabtext"; b.style.opacity = "";
+  const c = $("elabchip"); c.textContent = ""; c.className = "elabchip";
+}
+
+function createSSEParser(onEvent){
+  // Incremental text/event-stream parser: `event:`/`data:` fields, multi-line data joined
+  // with \n, comments ignored, CRLF tolerated, dispatch on blank line. Returns feed(text).
+  let buf = "", eventName = "", dataLines = [];
+  function dispatch(){
+    if (dataLines.length) onEvent(eventName || "message", dataLines.join("\n"));
+    eventName = ""; dataLines = [];
+  }
+  function handleLine(l){
+    if (l === ""){ dispatch(); return; }
+    if (l[0] === ":") return;                                   // comment
+    const i = l.indexOf(":");
+    const field = i === -1 ? l : l.slice(0, i);
+    let v = i === -1 ? "" : l.slice(i + 1);
+    if (v[0] === " ") v = v.slice(1);
+    if (field === "event") eventName = v;
+    else if (field === "data") dataLines.push(v);               // id/retry ignored
+  }
+  return function feed(text){
+    buf += text;
+    let nl;
+    while ((nl = buf.indexOf("\n")) !== -1){
+      let l = buf.slice(0, nl);
+      if (l.charAt(l.length - 1) === "\r") l = l.slice(0, -1);
+      buf = buf.slice(nl + 1);
+      handleLine(l);
+    }
+  };
+}
+
+async function startElaboration(genId, text, pi){
+  if (!$("qm").checked) return;        // user already turned quality off → nothing to elaborate
+  abortElab();
+  const ctrl = new AbortController();
+  elabCtrl = ctrl;
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; try{ ctrl.abort(); }catch(e){} }, ELAB_DEADLINE_MS);
+
+  const chip = $("elabchip"), body = $("elabtext");
+  $("elab").hidden = false;
+  chip.textContent = "🧠 elaboration · streaming…"; chip.className = "elabchip";
+  body.textContent = ""; body.className = "elabtext";
+  const tnode = document.createTextNode("");   // stream tokens accumulate into ONE text node — never parsed
+  body.appendChild(tnode);
+  let shown = 0, done = false, streamStarted = false;
+
+  const stale = () => ctrl.signal.aborted || genId !== reqSeq;
+  const appendTok = tok => {
+    tok = safeText(tok);
+    if (done || !tok || shown >= ELAB_CAP) return;
+    if (shown + tok.length > ELAB_CAP){ tok = tok.slice(0, ELAB_CAP - shown); body.classList.add("clipped"); }
+    tnode.appendData(tok); shown += tok.length;
+  };
+  const finish = (ms, grounded) => {
+    if (done) return; done = true;
+    chip.textContent = "🧠 elaboration · " + num(ms).toFixed(0) + " ms · " +
+      (grounded ? "verified against sources" : "could not be verified — treat as unconfirmed");
+    chip.className = "elabchip " + (grounded ? "ok" : "warn");
+    // the grounding verdict arrives AFTER the text streamed — an ungrounded elaboration
+    // must be visibly demoted, not left reading like part of the grounded answer
+    if (!grounded) body.style.opacity = "0.55";
+  };
+  const unavailable = () => {
+    if (done) return; done = true;
+    if (shown === 0){ chip.textContent = "elaboration unavailable"; chip.className = "elabchip dim"; }
+    else { chip.textContent = "🧠 elaboration · interrupted — treat as unconfirmed"; chip.className = "elabchip warn"; }
+  };
+  const jsonBody = () => JSON.stringify({ text, session_id: sessionId, quality_mode: true,
+                                          retrieval_mode: pi ? "pageindex" : null });
+  try{
+    try{
+      /* PREFERRED: SSE over POST — lights up automatically once /ask_stream deploys */
+      const r = await fetch(api("/ask_stream"), { method: "POST",
+        headers: { "content-type": "application/json" }, body: jsonBody(), signal: ctrl.signal });
+      const ctype = (r.headers.get("content-type") || "").toLowerCase();
+      if (!r.ok || ctype.indexOf("text/event-stream") === -1 || !r.body){
+        const e = new Error("no-sse"); e.kind = "nosse"; throw e;
+      }
+      streamStarted = true;            // endpoint exists and speaks SSE → never re-invoke the LLM on failure
+      const reader = r.body.getReader();
+      const decoder = new TextDecoder();
+      const feed = createSSEParser((name, data) => {
+        if (stale()) return;
+        let obj; try{ obj = JSON.parse(data); }catch(e){ return; }   // malformed event → ignored
+        if (name === "elab_delta") appendTok(obj && obj.t);
+        else if (name === "elab_done"){
+          // skipped (no generator / non-answer decision) or empty prose → quiet note,
+          // never a "verified" claim about text that does not exist
+          if ((obj && obj.skipped) || shown === 0) unavailable();
+          else finish(obj && obj.ms, !!(obj && obj.grounded));
+        }
+        // other events (e.g. the backend's leading `result`) are intentionally ignored:
+        // the grounded card of record comes from phase 1
+      });
+      for(;;){
+        const step = await reader.read();
+        if (ctrl.signal.aborted) break;
+        if (step.value) feed(decoder.decode(step.value, { stream: true }));
+        if (step.done){ feed(decoder.decode()); break; }
+      }
+      if (stale()){ if (timedOut) unavailable(); return; }
+      if (!done) unavailable();        // stream ended without elab_done
+    }catch(e1){
+      if (stale()){ if (timedOut) unavailable(); return; }
+      if (streamStarted){ unavailable(); return; }            // mid-stream failure → don't re-run generation
+      /* FALLBACK: the existing non-streaming quality path */
+      const r2 = await fetch(api("/ask_text"), { method: "POST",
+        headers: { "content-type": "application/json" }, body: jsonBody(), signal: ctrl.signal });
+      if (!r2.ok){ const e = new Error("http " + r2.status); throw e; }
+      const d2 = await r2.json();
+      if (stale()){ if (timedOut) unavailable(); return; }
+      if (d2 && d2.decision === "answer" && d2.answer != null){
+        let txt = safeText(d2.answer);
+        if (txt.length > ELAB_CAP){ txt = txt.slice(0, ELAB_CAP); body.classList.add("clipped"); }
+        tnode.appendData(txt); shown += txt.length;
+        done = true;
+        chip.textContent = "🧠 elaboration · " + num(d2.trace && d2.trace.total_ms).toFixed(0) + " ms";
+        chip.className = "elabchip ok";
+      } else unavailable();            // quality path abstained/errored → quiet note, grounded card untouched
+    }
+  }catch(e){
+    if (!stale() || timedOut) unavailable();
+  }finally{
+    clearTimeout(timer);
+    if (elabCtrl === ctrl) elabCtrl = null;
+  }
+}
+
+$("qm").addEventListener("change", () => {
+  if (!$("qm").checked){ abortElab(); $("elab").hidden = true; }   // silent abort — supplementary content
+});
+
+/* ---------- request executor (shared · monotonic · aborting · 12s deadline · per-request failover) ----
+   Routing: each query goes to the highest-priority backend believed live. A genuine backend-DOWN
+   failure — network error, a per-attempt soft-timeout (only armed when a live successor exists), or
+   an unapproved 5xx — marks that backend dead and fails the SAME query over to the next live backend,
+   retrying it once there. It does NOT fail over on a normal/abstain/refuse/error RESPONSE, a 4xx, a
+   malformed body, a user-abort, or a superseded request. The monotonic guard still wins: a newer user
+   request aborts an in-flight failover, and only the newest request renders. ------------------------ */
+let reqSeq = 0;
+let inflight = null;
+const DEADLINE_MS = 12000;          // global ceiling spanning ALL failover attempts of one request
+const ATTEMPT_TIMEOUT_MS = 6000;    // per-backend soft timeout — armed ONLY when a live successor exists
+// the audio path is legitimately slower: multipart upload + server-side STT (Sarvam capped
+// at ~7s + one 5xx retry). The 6s text budget FALSELY dead-marked a healthy full tier on
+// long holds and re-uploaded the clip to the edge — voice gets its own budgets.
+const VOICE_DEADLINE_MS = 20000;
+const VOICE_ATTEMPT_MS = 12000;
+
+async function askOnce(url, opts, signal){
+  const r = await fetch(url, Object.assign({}, opts, { signal }));
+  if (!r.ok){ const e = new Error("http " + r.status); e.kind = "http"; e.status = r.status; throw e; }
+  let data;
+  try{ data = await r.json(); }
+  catch(pe){ const e = new Error("bad-json"); e.kind = "json"; throw e; }
+  return data;
+}
+// ONE backend attempt — preserves "retry EXACTLY once on a genuine network failure (fetch TypeError,
+// never an abort)". Failover across backends is the caller's job, layered on top of this.
+async function askBackend(url, opts, signal){
+  try{ return await askOnce(url, opts, signal); }
+  catch(e1){
+    if (e1 && e1.name === "TypeError" && !signal.aborted) return await askOnce(url, opts, signal);
+    throw e1;
+  }
+}
+async function runAsk(path, buildOpts, failMsg, after){
+  const myId = ++reqSeq;
+  if (inflight){ try{ inflight.abort(); }catch(e){} }     // abort the prior in-flight request
+  abortElab();                                            // a new ask supersedes any in-flight elaboration
+  const ctrl = new AbortController();
+  inflight = ctrl;
+  const isVoice = path === "/ask";
+  const deadlineMs = isVoice ? VOICE_DEADLINE_MS : DEADLINE_MS;
+  const attemptMs = isVoice ? VOICE_ATTEMPT_MS : ATTEMPT_TIMEOUT_MS;
+  const timer = setTimeout(() => {
+    try{ ctrl.abort(new DOMException("deadline exceeded", "TimeoutError")); }
+    catch(e){ try{ ctrl.abort(); }catch(e2){} }
+  }, deadlineMs);
+  setBusy(true);
+  const opts = buildOpts();                                // snapshot toggles/body ONCE — reused on failover
+  const superseded = () => myId !== reqSeq || ctrl.signal.aborted;
+  try{
+    const candidates = liveCandidates();                   // priority-ordered, non-empty, not known-dead
+    if (!candidates.length){ throw Object.assign(new Error("no-backend"), { kind: "nobackend" }); }
+    let data = null, used = null, lastErr = null;
+    for (let i = 0; i < candidates.length; i++){
+      if (superseded()) throw (ctrl.signal.reason || new DOMException("aborted", "AbortError"));
+      const bk = candidates[i];
+      const hasNext = i < candidates.length - 1;
+      const aCtrl = new AbortController();                  // per-attempt signal chained to the global one
+      let softTimedOut = false, aTimer = null;
+      const relay = () => { try{ aCtrl.abort(ctrl.signal.reason); }catch(e){} };
+      if (ctrl.signal.aborted) relay();
+      else ctrl.signal.addEventListener("abort", relay, { once: true });
+      if (hasNext) aTimer = setTimeout(() => { softTimedOut = true; try{ aCtrl.abort(); }catch(e){} }, attemptMs);
+      try{
+        data = await askBackend(bk.url + path, opts, aCtrl.signal);
+        // a 200 with decision:"error" is a SERVER-side failure (transient pipeline/relay
+        // hiccup), not a real answer/abstain — fail the SAME query over to the next backend
+        // rather than showing "Error" while a healthy tier stands ready. Do NOT dead-mark:
+        // the backend isn't down, this one query threw. Keep it as the fallback if all error.
+        if (data && data.decision === "error" && hasNext){
+          lastErr = Object.assign(new Error("decision-error"), { kind: "decision-error", data });
+          continue;
+        }
+        used = bk; bk.live = true; break;                  // success → this backend answered; stop
+      }catch(err){
+        lastErr = err;
+        if (ctrl.signal.aborted) throw (ctrl.signal.reason || err);    // global abort / deadline / supersede → stop
+        if (softTimedOut){ bk.live = false; continue; }               // per-attempt timeout → down → fail over
+        const nm = err && err.name;
+        if (nm === "TypeError"){ bk.live = false; continue; }          // network down → fail over
+        if (err && err.kind === "http" && err.status >= 500){ bk.live = false; continue; } // unapproved 5xx → fail over
+        throw err;                                          // 4xx / bad-json / other → a RESPONSE, not a backend outage
+      } finally {
+        if (aTimer) clearTimeout(aTimer);
+        try{ ctrl.signal.removeEventListener("abort", relay); }catch(e){}
+      }
+    }
+    if (superseded()) return;                              // a newer request won while we looped → stay silent
+    if (used){
+      lastAnswerBackend = used;                            // the tier badge reflects who actually answered
+      updateBackendDots();
+      render(data);                                        // only the newest request renders
+      if (after){ try{ after(data, myId); }catch(e){} }    // phase 2 (elaboration) — fire and forget
+      return;
+    }
+    // every live candidate errored → show the honest server error (never a fabricated answer).
+    // a decision:error from the last backend is a real (typed) response — render it as-is so
+    // the user still gets the localized error + reason, not a generic "unreachable".
+    if (lastErr && lastErr.kind === "decision-error" && lastErr.data){ render(lastErr.data); return; }
+    if (lastErr && lastErr.kind === "http"){ showError("backend error (" + lastErr.status + ") — try again"); return; }
+    showError(failMsg);                                    // network / timeout exhausted across all backends
+  }catch(e){
+    if (myId !== reqSeq) return;                           // superseded → stay silent
+    const nm = e && e.name;
+    if (nm === "AbortError") return;                       // aborted by a newer request → silent
+    if (nm === "TimeoutError"){ showError("timed out — try again"); return; }
+    if (e && e.kind === "http"){ showError("backend error (" + e.status + ") — try again"); return; }
+    if (e && e.kind === "json"){ showError("unexpected response — try again"); return; }
+    if (e && e.kind === "nobackend"){ showError(failMsg); return; }  // no live backend configured at all
+    if (nm === "TypeError"){ showError(failMsg); return; } // network failure (single-candidate path)
+    showError("something went wrong — try again");
+  } finally {
+    clearTimeout(timer);
+    if (myId === reqSeq){ setBusy(false); inflight = null; }
+    updateBackendDots();
+  }
+}
+
+function askText(text){
+  text = (text || "").trim();
+  if (!text) return;
+  const qm = $("qm").checked, pi = $("pi").checked;        // snapshot toggles
+  // Phase 1 is ALWAYS the instant grounded path — quality arrives as a streamed elaboration after.
+  return runAsk("/ask_text", () => ({
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ text, session_id: sessionId, quality_mode: false, retrieval_mode: pi ? "pageindex" : null })
+  }), "request failed — backend unreachable",
+  qm ? (data, id) => {
+    // only a grounded ANSWER earns an elaboration: under an abstain/refuse card the chip
+    // just spun to "unavailable" while silently re-running the whole query server-side
+    if (data && data.decision === "answer") startElaboration(id, text, pi);
+  } : null);
+}
+function askAudio(blob, mime){
+  const qm = $("qm").checked, pi = $("pi").checked;        // snapshot toggles
+  const uploadType = mime || "audio/webm";
+  const ext = uploadType.indexOf("mp4") !== -1 ? "mp4"
+            : uploadType.indexOf("ogg") !== -1 ? "ogg"
+            : uploadType.indexOf("wav") !== -1 ? "wav" : "webm";
+  return runAsk("/ask", () => {
+    const fd = new FormData();
+    fd.append("file", blob, "audio." + ext);              // actual MIME (blob.type) + matching extension
+    fd.append("session_id", sessionId);
+    if (pi) fd.append("retrieval_mode", "pageindex");     // phase 1 never carries quality_mode
+    return { method: "POST", body: fd };
+  }, "voice failed — backend unreachable",
+  qm ? (data, id) => {
+    if (!data || data.decision !== "answer") return;      // no elaboration under an abstain card
+    const tq = data && data.trace ? safeText(data.trace.query).trim() : "";
+    if (tq) startElaboration(id, tq, pi);                 // elaborate the transcript, same two-phase flow
+  } : null);
+}
+
+$("ask").onclick = () => askText($("q").value);
+$("q").addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229){ askText($("q").value); }
+});
+$("exrow").addEventListener("click", e => {
+  const b = e.target.closest && e.target.closest(".ex");
+  if (b){ $("q").value = b.textContent; askText(b.textContent); }
+});
+
+/* ---------- hold-to-talk recorder (generation-guarded state machine) ---------- */
+const mic = $("mic");
+const HINT_IDLE = "hold SPACE or the mic to talk";
+const HINT_ARMING = "arming mic…";                 // interim: acquiring capture — NOT a go-cue
+const HINT_LIVE = "listening… release to ask";     // the go-cue — shown ONLY once capture is live
+const MIN_MS = 300, MIN_BYTES = 256, SILENCE_RMS = 0.01, MAX_MS = 15000;
+const WARM_IDLE_MS = 25000;   // release the pre-warmed mic after this long with no holds (privacy)
+const recSupported = !!(window.MediaRecorder && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+
+let recGen = 0;         // monotonic recording generation — every start bumps it
+let holding = false;    // synchronous hold flag, set at pointerdown BEFORE the permission await
+let rec = null;         // active MediaRecorder
+let warmStream = null;  // pre-warmed MediaStream — kept LIVE and reused across holds; released only on idle/teardown
+let idleTimer = null;   // releases warmStream after WARM_IDLE_MS of inactivity
+let audioCtx = null, analyser = null, levelRAF = null, autoStop = null;
+let rmsSum = 0, rmsCount = 0;
+
+function setHint(txt, hot){ const h = $("hint"); h.textContent = txt; h.className = "holdhint" + (hot ? " hot" : ""); }
+function pickMime(){
+  if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return "";
+  if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) return "audio/webm;codecs=opus";
+  if (MediaRecorder.isTypeSupported("audio/webm")) return "audio/webm";
+  if (MediaRecorder.isTypeSupported("audio/mp4")) return "audio/mp4";               // Safari / iOS → AAC
+  if (MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")) return "audio/ogg;codecs=opus";
+  return "";
+}
+function permHint(err){
+  const name = err && err.name;
+  if (name === "NotAllowedError" || name === "SecurityError") return "microphone permission needed";
+  if (name === "NotFoundError" || name === "OverconstrainedError") return "no microphone found — type instead";
+  return "couldn't start recording — type instead";
+}
+function stopMeter(){
+  if (levelRAF){ cancelAnimationFrame(levelRAF); levelRAF = null; }
+  if (analyser){ try{ analyser.disconnect(); }catch(e){} analyser = null; }
+  if (audioCtx){ try{ audioCtx.close(); }catch(e){} audioCtx = null; }
+  mic.style.removeProperty("--lvl");
+}
+function streamLive(s){                 // reusable while it still owns an audio track that hasn't ended
+  if (!s || !s.getTracks) return false;
+  const tracks = s.getTracks();
+  return tracks.length > 0 && tracks.some(t => t && t.kind === "audio" && t.readyState !== "ended");
+}
+function releaseWarm(){                 // stop + drop the pre-warmed stream — idle timeout or teardown ONLY
+  if (idleTimer){ clearTimeout(idleTimer); idleTimer = null; }
+  if (warmStream){ try{ warmStream.getTracks().forEach(t => t.stop()); }catch(e){} warmStream = null; }
+}
+function armIdleRelease(){              // (re)arm the privacy timeout that frees the warm mic when idle
+  if (idleTimer){ clearTimeout(idleTimer); idleTimer = null; }
+  if (warmStream) idleTimer = setTimeout(releaseWarm, WARM_IDLE_MS);
+}
+function cleanupRec(){                 // idempotent — resets recorder + meter, NEVER the warm stream
+  if (autoStop){ clearTimeout(autoStop); autoStop = null; }
+  stopMeter();
+  rec = null;
+  mic.classList.remove("rec");
+}
+function startMeter(theStream){
+  try{
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    audioCtx = new Ctx();
+    // iOS Safari: a context created outside the user-gesture call stack (onstart is async)
+    // starts "suspended" WITHOUT throwing — the analyser then reads zeros forever and the
+    // silence gate would reject ALL speech. Resume, and only trust samples taken while the
+    // context is actually running (never-ran ⇒ rmsCount stays 0 ⇒ gate disabled, honest).
+    if (audioCtx.state !== "running"){ try{ audioCtx.resume().catch(() => {}); }catch(e){} }
+    const src = audioCtx.createMediaStreamSource(theStream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    src.connect(analyser);
+    const buf = new Float32Array(analyser.fftSize);
+    const tick = () => {
+      if (!analyser) return;
+      try{ analyser.getFloatTimeDomainData(buf); }catch(e){ return; }
+      let sum = 0; for (let i = 0; i < buf.length; i++){ const v = buf[i]; sum += v * v; }
+      if (!audioCtx || audioCtx.state === "running"){                // suspended reads are zeros, not speech
+        rmsSum += sum; rmsCount += buf.length;                       // accumulate for whole-clip RMS (silence gate)
+      }
+      if (!reduceMotion){ mic.style.setProperty("--lvl", Math.min(1, Math.sqrt(sum / buf.length) * 4).toFixed(3)); }
+      levelRAF = requestAnimationFrame(tick);
+    };
+    levelRAF = requestAnimationFrame(tick);
+  }catch(e){ analyser = null; audioCtx = null; }                    // silence detection simply disabled if WebAudio fails
+}
+
+async function startRec(){
+  if (holding) return;                                              // already holding
+  if (!recSupported){ setHint("recording not supported — type instead"); return; }
+  holding = true;                                                   // synchronous — BEFORE permission
+  const myGen = ++recGen;
+  if (idleTimer){ clearTimeout(idleTimer); idleTimer = null; }      // active again → cancel any pending warm-release
+  mic.classList.add("rec");
+
+  /* 1 — obtain a LIVE stream: reuse the pre-warmed one, else acquire (honest "arming…" cue while we wait) */
+  let liveStream;
+  if (streamLive(warmStream)){
+    liveStream = warmStream;                                        // warm reuse → near-zero capture-start latency
+  } else {
+    if (warmStream) releaseWarm();                                  // ended/stale → drop before re-acquiring
+    setHint(HINT_ARMING);                                           // interim state — NEVER tells the user to speak
+    let acquired;
+    try{
+      acquired = await navigator.mediaDevices.getUserMedia({ audio: {
+        channelCount: 1, sampleRate: 16000, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    }catch(err){
+      if (myGen === recGen){ holding = false; mic.classList.remove("rec"); setHint(permHint(err)); }
+      return;
+    }
+    // released or superseded while the permission prompt was open → stop the fresh tracks, keep nothing
+    if (!holding || myGen !== recGen){ acquired.getTracks().forEach(t => t.stop()); return; }
+    warmStream = acquired;                                          // persist for reuse across subsequent holds
+    liveStream = warmStream;
+  }
+
+  /* 2 — build the recorder on the live stream */
+  const mime = pickMime();
+  try{
+    rec = mime ? new MediaRecorder(liveStream, { mimeType: mime }) : new MediaRecorder(liveStream);
+  }catch(e){
+    try{ rec = new MediaRecorder(liveStream); }
+    catch(e2){ holding = false; cleanupRec(); releaseWarm(); setHint("recording not supported — type instead"); return; }
+  }
+
+  // per-recording chunk array (NOT module state): a superseded recorder's final
+  // dataavailable can fire after the next hold begins — with a shared array that stale
+  // tail audio silently prepended itself into the NEXT upload's blob
+  const myChunks = [];
+  rmsSum = 0; rmsCount = 0;
+  rec._discard = false;
+  const capturedGen = myGen;
+  const capturedMime = (rec && rec.mimeType) || mime || "audio/webm";
+  const capturedStream = liveStream;
+  const self = rec;
+  let startedAt = 0;
+  let armed = false;
+
+  /* the ONLY place the go-cue is shown: capture is provably live (MediaRecorder `start` fired). This
+     guarantees the user is never told to speak before the recorder is actually capturing. */
+  const goLive = () => {
+    if (armed) return; armed = true;
+    if (!holding || capturedGen !== recGen || self !== rec) return; // released/superseded before capture began
+    setHint(HINT_LIVE, true);
+    startMeter(capturedStream);                                     // RMS meter starts at the SAME moment as the cue
+  };
+
+  rec.ondataavailable = e => { if (e.data && e.data.size) myChunks.push(e.data); };
+  rec.onstart = goLive;                                             // honest readiness — real MediaRecorder fires this
+  rec.onerror = () => {
+    if (capturedGen === recGen){ holding = false; setHint("recording error — try again"); }
+    if (self === rec) cleanupRec();
+  };
+  rec.onstop = () => {
+    const dur = performance.now() - startedAt;
+    const measured = rmsCount > 0;
+    const rms = measured ? Math.sqrt(rmsSum / rmsCount) : 0;
+    const blob = new Blob(myChunks, { type: capturedMime });
+    // NOTE: the warm stream is deliberately NOT stopped here — only the MediaRecorder is done; the
+    // stream stays live for the next hold. It is released only on idle timeout / teardown.
+    if (self === rec) cleanupRec();                 // only reset module state if we're still the active recorder
+    if (capturedGen !== recGen) return;             // superseded by a newer recording → discard
+    if (self._discard) return;                      // canceled (pointercancel) → discard
+    if (dur < MIN_MS){ setHint("hold a little longer"); return; }         // <300 ms → no STT spend
+    if (blob.size < MIN_BYTES){ setHint("hold a little longer"); return; } // empty blob → no STT spend
+    if (measured && rms < SILENCE_RMS){ setHint("didn’t catch any speech — try again"); return; } // silent → no STT spend
+    askAudio(blob, capturedMime);
+  };
+
+  startedAt = performance.now();
+  try{ rec.start(); }
+  catch(e){ holding = false; cleanupRec(); armIdleRelease(); setHint("recording error — try again"); return; }
+  autoStop = setTimeout(() => { if (capturedGen === recGen && holding) stopRec(); }, MAX_MS);  // 15 s auto-stop
+}
+
+function finishRec(discard){
+  if (autoStop){ clearTimeout(autoStop); autoStop = null; }
+  const wasHolding = holding;
+  holding = false;
+  mic.classList.remove("rec");
+  if (rec){
+    rec._discard = !!discard;
+    if (rec.state === "recording"){ try{ rec.stop(); }catch(e){ cleanupRec(); } }  // onstop finishes the job
+    else { cleanupRec(); }
+    setHint(HINT_IDLE);
+  } else if (wasHolding){
+    // permission still pending (cold acquisition in flight) → startRec's post-await guard discards the grant
+    setHint(HINT_IDLE);
+  }
+  // else: releasing after a failed/aborted start (denial, unsupported) → keep the notice hint visible
+  armIdleRelease();           // keep the warm mic briefly for the next hold, then auto-release (privacy)
+}
+function stopRec(){ finishRec(false); }    // normal release → upload if the clip is valid
+function cancelRec(){ finishRec(true); }   // pointercancel → discard
+
+mic.addEventListener("pointerdown", e => {
+  e.preventDefault();
+  try{ mic.setPointerCapture && mic.setPointerCapture(e.pointerId); }catch(_){}
+  startRec();
+});
+mic.addEventListener("pointerup", e => { e.preventDefault(); stopRec(); });
+mic.addEventListener("pointercancel", () => { cancelRec(); });
+mic.addEventListener("lostpointercapture", () => { if (holding) stopRec(); });
+mic.addEventListener("keydown", e => {
+  if ((e.key === " " || e.key === "Enter") && !e.repeat){ e.preventDefault(); startRec(); }
+});
+mic.addEventListener("keyup", e => {
+  if (e.key === " " || e.key === "Enter"){ e.preventDefault(); stopRec(); }
+});
+mic.addEventListener("blur", () => { if (holding) stopRec(); });
+
+/* ---------- spacebar hold-to-talk (page-global) — SAME recorder state machine, not a fork ---------- */
+function isTypingTarget(t){
+  if (!t || !t.tagName) return false;
+  const tag = t.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t.isContentEditable === true;
+}
+function isSpaceKey(e){ return e.code === "Space" || e.key === " " || e.key === "Spacebar"; }
+document.addEventListener("keydown", e => {
+  if (!isSpaceKey(e) || !recSupported) return;
+  if (e.target === mic) return;                                    // mic's own handler owns the focused-button case
+  if (isTypingTarget(e.target) || e.isComposing || e.keyCode === 229) return;  // never hijack typing / IME
+  // Space is the canonical activation key for buttons/links/disclosures — a keyboard user
+  // Space-pressing "sources" must toggle it, not go hot-mic with a surprise permission prompt
+  if (e.target && e.target.closest && e.target.closest("button,summary,a,[role='button']")) return;
+  e.preventDefault();                                              // suppress page scroll (and button activation)
+  if (e.repeat) return;                                            // auto-repeat while held → one hold, not many starts
+  startRec();
+});
+document.addEventListener("keyup", e => {
+  if (!isSpaceKey(e) || e.target === mic) return;
+  if (!holding) return;                                            // nothing was armed via SPACE → leave the key alone
+  e.preventDefault();
+  stopRec();
+});
+window.addEventListener("pagehide", releaseWarm);   // never leave the mic warm once the page is gone
+
+if (!recSupported){ mic.setAttribute("aria-disabled", "true"); setHint("type your question below"); }
+</script>
+</body>
+</html>

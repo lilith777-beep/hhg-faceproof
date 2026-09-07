@@ -1,0 +1,27 @@
+# secrets — never commit
+secrets.txt
+*.secret
+*.env
+.env*
+
+# python
+.venv/
+.venv-edge/
+__pycache__/
+*.pyc
+
+# edge bundle (regenerable via src/edge.py --export-corpus; 60MB)
+edge_corpus.jsonl
+
+# local data / indexes / logs
+qdrant_data/
+qdrant_smoke/
+*.log
+logs/
+
+# eval fixtures that may be large (regenerable)
+eval/fixtures/
+
+# sealed query files never leave Forge (counts+digests live in realization.json)
+eval/builds/**/queries_*_sealed.json
+.tools/
