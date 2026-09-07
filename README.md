@@ -119,11 +119,18 @@ The runner reports media, expected face-vector, identity, and query-reference co
 FPIR/FNIR/TPIR with confidence intervals; incorrect known returns; preview K=5/10/20/50 truth
 recall and exhaustive-verifier retention; bytes, latency, failures, and every terminal disposition.
 An unknown query counts once if it returns any accepted wrong candidate. Pair counts are not
-misreported as independent searches.
+misreported as independent searches. `UNASSESSABLE`, `NOT_RUN`, and `ERROR` axes stay in the
+ledger but are excluded from evaluable-search denominators, so missing evidence cannot become a
+false negative or true negative.
 
 The default research targets are provisional: FPIR upper 95% bound <=1%, TPIR lower 95% bound
 >=90%, and preview candidate-recall lower 95% bound >=99% for identity and copy positives. Failure
 to meet them is a blocked result, not a threshold adjustment on the test set.
+
+The small legacy `calibrate` and `calibrate-copy` helpers require at least two positive and five
+negative comparisons and now return the explicit `BLOCKED_REAL_CALIBRATION_DATA` state when that
+minimum is absent. This minimum only prevents meaningless execution; it is not enough to support
+the open-set confidence targets above.
 
 ## One end-to-end live command
 
@@ -174,6 +181,11 @@ faceproof acceptance
 The bundled images are fictional synthetic integration fixtures. They test software wiring only
 and are never presented as accuracy evidence.
 
+The hardening suite also checks malformed/non-finite vision outputs, parser and pose failures,
+multi-face ambiguity, exact FAISS/NumPy equivalence, deterministic ties and duplicate-media
+provenance, out-of-order network completion, evaluation leakage, clustered search metrics,
+calibration isolation, locked-test policy binding, and evidence tampering.
+
 ## Known blockers
 
 The repository is code-complete for the bounded pipeline, but real claims remain blocked until:
@@ -186,9 +198,11 @@ The repository is code-complete for the bounded pipeline, but real claims remain
 - the human reviewer confirms each explicit claim; and
 - optional public-testnet RPC/funds are explicitly authorized (local persistence needs neither).
 
-See [IMPLEMENTATION_CHECKLIST.md](IMPLEMENTATION_CHECKLIST.md) for exact current statuses. No SOTA,
-zero-error, ownership, capture-time, or network-wide-search claim is made from component choice or
-the six-case demo.
+See [IMPLEMENTATION_CHECKLIST.md](IMPLEMENTATION_CHECKLIST.md) for exact current statuses. The code
+is consolidated as a SOTA-oriented research product, but no SOTA, zero-error, ownership,
+capture-time, or network-wide-search claim is made from component choice or the six-case demo.
+SOTA requires an identity-disjoint held-out comparison against competitive baselines; that evidence
+is currently blocked on the real consented corpus.
 
 ## License
 

@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from faceproof.calibration import calibrate_copy, choose_threshold
+from faceproof.errors import BlockedState
 
 
 def test_calibration_separates_known_scores() -> None:
@@ -15,7 +16,10 @@ def test_calibration_separates_known_scores() -> None:
 
 
 def test_calibration_requires_minimum_validation_set() -> None:
-    with pytest.raises(ValueError, match="at least 2 positive and 5 negative"):
+    with pytest.raises(
+        BlockedState,
+        match=r"BLOCKED_REAL_CALIBRATION_DATA.*at least 2 positive and 5 negative",
+    ):
         choose_threshold([0.7], [0.1, 0.2])
 
 

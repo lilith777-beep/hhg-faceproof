@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -109,6 +110,18 @@ class PreviewFailureFetcher(FakeFetcher):
         if "preview-broken" in url:
             raise OSError("preview unavailable")
         return RemoteImage(url, b"matching-image", "image/jpeg")
+
+
+class OutOfOrderFetcher(FakeFetcher):
+    def fetch(self, url: str) -> RemoteImage:
+        if "slow" in url:
+            time.sleep(0.05)
+        return RemoteImage(url, b"matching-image", "image/jpeg")
+
+
+class ExactCopyFetcher(FakeFetcher):
+    def fetch(self, url: str) -> RemoteImage:
+        return RemoteImage(url, b"query-image", "image/jpeg")
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -301,3 +314,58 @@ def test_exhaustive_mode_recovers_original_after_preview_failure(tmp_path: Path)
     assert bundle.match["post_id"] == "123"
     assert "full-resolution-recovery" in bundle.match["retrieval_channels"]
     assert bundle.search["failures"][0]["media_id"] == hit.media_id
+
+
+def test_parallel_downloads_preserve_provider_media_order(tmp_path: Path) -> None:
+    hits = [_hit("slow.jpg", post_id="first"), _hit("fast.jpg", post_id="second")]
+    pipeline = _pipeline(tmp_path, FakeSource(hits))
+    pipeline.image_fetcher = OutOfOrderFetcher()
+
+    downloaded, failures = pipeline._download(hits, preview=True)
+
+    assert failures == []
+    assert [hit.post_id for hit, _ in downloaded] == ["first", "second"]
+
+
+@pytest.mark.parametrize(
+    ("homography", "reason"),
+    [
+        ((1.0, 0.0), "invalid shape"),
+        ((float("nan"), 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0), "non-finite"),
+    ],
+)
+def test_invalid_source_face_geometry_is_unknown(
+    homography: tuple[float, ...], reason: str
+) -> None:
+    source_face = FaceObservation(
+        BoundingBox(10, 20, 30, 40, 0.99), np.array([1.0, 0.0])
+    )
+    candidate_box = BoundingBox(10, 20, 30, 40, 0.99)
+
+    result = DiscoveryPipeline._source_candidate_association(
+        source_face,
+        candidate_box,
+        FeatureMatch(20, 18, 0.9, homography=homography),
+    )
+
+    assert result["state"] == "UNKNOWN"
+    assert reason in result["reason"]
+
+
+def test_exact_copy_claim_describes_byte_identity_not_a_calibrated_score(
+    tmp_path: Path,
+) -> None:
+    image = tmp_path / "query.jpg"
+    image.write_bytes(b"query-image")
+    pipeline = _pipeline(tmp_path, FakeSource([_hit()]), copy_engine=FakeCopyEngine())
+    pipeline.image_fetcher = ExactCopyFetcher()
+
+    bundle, _ = pipeline.discover(
+        image, copy_reference_paths=[image], consent_asserted=True
+    )
+
+    assert bundle.match["exact_image"] is True
+    assert (
+        "exact downloaded media bytes match an explicit copy-reference SHA-256"
+        in bundle.claims["reviewable_claims"]
+    )

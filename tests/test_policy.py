@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from faceproof.errors import BlockedState
+from faceproof.errors import BlockedState, FaceInputError
 from faceproof.policy import AxisState, DecisionPolicy, freeze_policy, load_policy
 
 
@@ -111,7 +111,18 @@ def test_policy_freezes_before_test_then_binds_locked_report(tmp_path: Path) -> 
 
     test_report = tmp_path / "test.json"
     test_report.write_text(
-        json.dumps({"schema": "faceproof.open-set-evaluation.v1", "split": "test"}),
+        json.dumps(
+            {
+                "schema": "faceproof.open-set-evaluation.v1",
+                "split": "test",
+                "policy": {
+                    "policy_id": "study-1",
+                    "calibration_report_sha256": hashlib.sha256(
+                        calibration.read_bytes()
+                    ).hexdigest(),
+                },
+            }
+        ),
         encoding="utf-8",
     )
     final = tmp_path / "final.json"
@@ -128,3 +139,44 @@ def test_policy_freezes_before_test_then_binds_locked_report(tmp_path: Path) -> 
     assert value["artifacts"]["test_report_sha256"] == hashlib.sha256(
         test_report.read_bytes()
     ).hexdigest()
+
+
+def test_policy_rejects_unrelated_locked_test_report(tmp_path: Path) -> None:
+    (tmp_path / "model-lock.json").write_text('{"frozen":true}', encoding="utf-8")
+    calibration = tmp_path / "calibration.json"
+    calibration.write_text(
+        json.dumps(
+            {
+                "schema": "faceproof.calibration-decision.v1",
+                "status": "FROZEN_BEFORE_TEST",
+                "policy_id": "study-1",
+                "thresholds": {"face_accept": 0.6, "copy_accept": 0.8},
+            }
+        ),
+        encoding="utf-8",
+    )
+    test_report = tmp_path / "test.json"
+    test_report.write_text(
+        json.dumps(
+            {
+                "schema": "faceproof.open-set-evaluation.v1",
+                "split": "test",
+                "policy": {
+                    "policy_id": "different-study",
+                    "calibration_report_sha256": "0" * 64,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(FaceInputError, match="frozen calibration decision"):
+        freeze_policy(
+            calibration,
+            test_report,
+            project_root=tmp_path,
+            output=tmp_path / "final.json",
+            max_gallery_media=200,
+            max_enrollment_references=4,
+            max_copy_references=4,
+        )

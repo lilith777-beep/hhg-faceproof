@@ -30,6 +30,20 @@ def test_exact_index_rejects_invalid_vectors() -> None:
         index.add(["bad"], [np.array([1.0, 2.0, 3.0], dtype=np.float32)])
     with pytest.raises(ValueError, match="non-zero"):
         index.add(["zero"], [np.zeros(2, dtype=np.float32)])
+    with pytest.raises(ValueError, match="finite"):
+        index.add(["infinite"], [np.array([np.inf, 1.0], dtype=np.float32)])
+
+
+def test_exact_index_resolves_limit_boundary_ties_by_insertion_order() -> None:
+    index = ExactCosineIndex(2)
+    index.add(
+        ["first", "second", "third"],
+        [np.array([1.0, 0.0], dtype=np.float32) for _ in range(3)],
+    )
+    assert [hit.key for hit in index.search(np.array([1.0, 0.0]), limit=2)] == [
+        "first",
+        "second",
+    ]
 
 
 def test_media_index_matches_numpy_oracle_and_deduplicates_media() -> None:
@@ -75,3 +89,78 @@ def test_media_index_empty_ties_multiple_queries_and_invalid_inputs() -> None:
         index.add(["x"], [np.ones(2)], [])
     with pytest.raises(ValueError, match="finite"):
         index.search([np.array([np.nan, 1.0])], limit=1)
+
+
+def test_media_index_multiquery_oracle_retains_responsible_occurrence() -> None:
+    index = ExactMediaIndex(2)
+    vectors = [
+        np.array([1.0, 0.0]),
+        np.array([1.0, 0.0]),
+        np.array([1.0, 0.0]),
+        np.array([0.0, 1.0]),
+        np.array([-1.0, 0.0]),
+        np.array([0.0, -1.0]),
+    ]
+    media = ["z", "a", "z", "b", "a", "c"]
+    queries = [np.array([1.0, 0.0]), np.array([1.0, 0.0]), np.array([0.0, 1.0])]
+    index.add(media, vectors, [{"row": row} for row in range(len(vectors))])
+
+    hits = index.search(queries, limit=10)
+
+    query_matrix = np.stack(queries).astype(np.float64)
+    query_matrix /= np.linalg.norm(query_matrix, axis=1, keepdims=True)
+    vector_matrix = np.stack(vectors).astype(np.float64)
+    vector_matrix /= np.linalg.norm(vector_matrix, axis=1, keepdims=True)
+    scores = query_matrix @ vector_matrix.T
+    oracle: dict[str, tuple[float, int, int]] = {}
+    for query_index in range(len(queries)):
+        for vector_index, media_key in enumerate(media):
+            candidate = (float(scores[query_index, vector_index]), vector_index, query_index)
+            current = oracle.get(media_key)
+            if current is None or (candidate[0], -query_index, -vector_index) > (
+                current[0],
+                -current[2],
+                -current[1],
+            ):
+                oracle[media_key] = candidate
+    expected = sorted(oracle.items(), key=lambda item: (-item[1][0], item[0], item[1][1]))
+    assert [hit.media_key for hit in hits] == [item[0] for item in expected]
+    for hit, (_, (score, vector_index, query_index)) in zip(hits, expected, strict=True):
+        assert hit.score == pytest.approx(score, abs=1e-6)
+        assert (hit.vector_index, hit.query_index) == (vector_index, query_index)
+        assert hit.metadata == {"row": vector_index}
+    assert index.index.index.ntotal == len(vectors)
+    assert index.index.keys == []
+
+
+def test_media_index_batches_queries_in_one_faiss_call() -> None:
+    index = ExactMediaIndex(2)
+    index.add(
+        [f"media-{row}" for row in range(4)],
+        [np.array([row + 1.0, 1.0]) for row in range(4)],
+        [{"row": row} for row in range(4)],
+    )
+
+    class CountingIndex:
+        def __init__(self, delegate: object) -> None:
+            self.delegate = delegate
+            self.calls: list[tuple[int, int]] = []
+
+        def search(self, queries: np.ndarray, limit: int) -> tuple[np.ndarray, np.ndarray]:
+            self.calls.append((len(queries), limit))
+            return self.delegate.search(queries, limit)
+
+    counting = CountingIndex(index.index.index)
+    index.index.index = counting
+    hits = index.search([np.array([1.0, row + 1.0]) for row in range(8)], limit=2)
+    assert len(hits) == 2
+    assert counting.calls == [(8, 4)]
+
+
+def test_media_index_add_is_atomic_when_metadata_is_invalid() -> None:
+    index = ExactMediaIndex(2)
+    with pytest.raises(TypeError):
+        index.add(["media"], [np.ones(2)], [object()])  # type: ignore[list-item]
+    assert index.index.index.ntotal == 0
+    assert index.media_keys == []
+    assert index.metadata == []

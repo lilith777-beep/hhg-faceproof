@@ -11,7 +11,7 @@ from typing import Any
 import numpy as np
 
 from .copydetect import CopyDescriptorEngine
-from .errors import FaceInputError
+from .errors import BlockedState, FaceInputError
 from .faces import FaceEngine
 from .integrity import write_json
 
@@ -33,7 +33,10 @@ def choose_threshold(
 ) -> ThresholdMetrics:
     """Choose a deterministic balanced-accuracy threshold, preferring lower FAR."""
     if len(positive_scores) < 2 or len(negative_scores) < 5:
-        raise ValueError("calibration needs at least 2 positive and 5 negative comparisons")
+        raise BlockedState(
+            "BLOCKED_REAL_CALIBRATION_DATA",
+            "calibration needs at least 2 positive and 5 negative comparisons",
+        )
     values = sorted(set(positive_scores + negative_scores))
     candidates = [values[0] - 1e-6, values[-1] + 1e-6]
     candidates.extend((left + right) / 2 for left, right in pairwise(values))
