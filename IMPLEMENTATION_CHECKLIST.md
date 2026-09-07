@@ -1,6 +1,6 @@
 # FaceProof v0.3 implementation checklist
 
-Executable facts as of 2026-09-06. External prerequisites remain `BLOCKED`, never `PASS`.
+Executable facts as of 2026-09-07. External prerequisites remain `BLOCKED`, never `PASS`.
 
 ## Frozen Phase 0 baseline
 
@@ -32,6 +32,14 @@ Executable facts as of 2026-09-06. External prerequisites remain `BLOCKED`, neve
 - [x] Anvil `--state` persistence verified after stop and fresh-process restart.
 - [x] Authorized-account Mastodon pagination, multi-image posts, boost provenance, bounded retries.
 - [x] Current lint/unit/synthetic/model checks run green (see commands below).
+- [x] Malformed parser tensors, landmarks, geometry, crops, pose solutions, and non-finite quality
+  inputs fail to `UNKNOWN`/`NEEDS_REVIEW`; a partial eye/mouth observation cannot clear a pair.
+- [x] Evaluation excludes `UNASSESSABLE`, `NOT_RUN`, and `ERROR` axes from performance
+  denominators while retaining every failure in the terminal-disposition ledger.
+- [x] Calibration is search-level and participant/source-family clustered; the locked-test report
+  must name the exact frozen policy and exact calibration-decision hash before final binding.
+- [x] Concurrent media downloads are reassembled in provider order, making tied rankings and
+  evidence deterministic regardless of response completion order.
 
 ## Ten blocker statuses
 
@@ -59,7 +67,7 @@ Executable facts as of 2026-09-06. External prerequisites remain `BLOCKED`, neve
 .venv\Scripts\ruff.exe check src\faceproof tests
   PASS
 .venv\Scripts\python.exe -m pytest tests -q
-  PASS, 83 tests
+  PASS, 117 tests
 .venv\Scripts\faceproof.exe models status
   PASS: all four artifacts match pinned SHA-256
 .venv\Scripts\faceproof.exe doctor
@@ -74,6 +82,20 @@ Executable facts as of 2026-09-06. External prerequisites remain `BLOCKED`, neve
   relabeled as passing—the already installed pinned Hatchling produced the verified wheel.)
 ```
 
+## Focused performance/equivalence evidence
+
+- Pinned SSCD descriptors for seven varied fixtures were bit-for-bit identical before/after
+  batching (maximum absolute delta `0.0`). A 16-image synthetic 720p CPU batch improved from
+  `5833.6 ms` to `5391.4 ms` median (`~7.6%`); this is a local engineering measurement, not a
+  universal latency claim.
+- Exact-media retrieval for 20,000 vectors x 8 queries improved from `1266.9 ms` to `295.7 ms`
+  median (`4.28x`) with the same selected-vector checksum. NumPy-oracle and deterministic-tie
+  regression tests cover empty indexes, duplicate media, invalid vectors, and K above index size.
+- A supplied external folder with one copy-positive and two copy-negative samples was rejected as
+  `BLOCKED_REAL_CALIBRATION_DATA` (minimum 2/5), with a clean CLI error rather than a traceback.
+  Its raw SSCD integration scores were `0.511585` positive and `0.101933`/`0.094695` negative;
+  these three observations are not a threshold or an accuracy estimate.
+
 ## External next inputs
 
 1. Consented images and signed/documented permission references for every biometric face.
@@ -81,5 +103,7 @@ Executable facts as of 2026-09-06. External prerequisites remain `BLOCKED`, neve
 3. At least six authorized Mastodon media cases across three posts; account handles and hashtag.
 4. Human reviewer ID. Optional public-testnet RPC/test funds only if that separate demo is desired.
 
-No SOTA, zero-error, public-chain timestamp, ownership, capture-time, or network-wide-search claim is
-currently authorized by the available evidence.
+The implementation is SOTA-oriented in auditability and evaluation discipline, but no SOTA,
+zero-error, public-chain timestamp, ownership, capture-time, or network-wide-search claim is
+currently authorized by the available evidence. Comparative held-out results are the remaining
+gate for that label.

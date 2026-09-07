@@ -107,6 +107,16 @@ Posts are not forced into a winner/runner-up identity margin; multiple posts may
    circular hash.
 8. Local state persistence and public-testnet proof are distinct. Mainnet is prohibited and a
    public-testnet write needs explicit CLI authorization.
+9. Parser/pose/quality inputs now have explicit shape, coordinate, finiteness, and geometric
+   validity contracts. Any malformed or ambiguous evidence fails closed to `UNKNOWN` or
+   `NEEDS_REVIEW`.
+10. Multi-query exact retrieval is batched without changing the normalized dot-product contract;
+    duplicate occurrences and the responsible query/vector provenance remain intact.
+11. Open-set metrics use evaluable searches and participant/source-family clusters. Execution
+    failures and unassessable axes remain visible in the ledger but cannot become false negatives
+    or true negatives by accident.
+12. Network completion order cannot affect ranking or sealed evidence: downloaded media are
+    restored to provider discovery order before vector insertion, with deterministic score ties.
 
 ## What is proven now vs externally blocked
 
@@ -118,4 +128,6 @@ Real operating thresholds, false-positive identification rate, true-positive ide
 preview Recall@K, quality false rejection, region visibility error, and real pose-bin error remain
 blocked until the identity-disjoint consented corpus is supplied. A live multi-post Mastodon proof
 remains blocked until controlled posts, permission records, and the configured account/tag scope
-exist. No SOTA or zero-error claim is made before those reports pass.
+exist. The current system is a strong, SOTA-oriented engineering baseline, not a measured SOTA
+result. A SOTA claim requires a predeclared task, competitive baselines, and identity-disjoint
+held-out evidence; no SOTA or zero-error claim is made before those reports pass.

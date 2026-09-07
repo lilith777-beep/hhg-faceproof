@@ -762,25 +762,33 @@ class DiscoveryPipeline:
     ) -> tuple[list[tuple[SearchHit, RemoteImage]], list[dict[str, str]]]:
         if not hits:
             return [], []
-        downloaded: list[tuple[SearchHit, RemoteImage]] = []
-        failures: list[dict[str, str]] = []
         url_to_hits: dict[str, list[SearchHit]] = {}
         for hit in hits:
             url = hit.preview_url if preview else hit.image_url
             url_to_hits.setdefault(url, []).append(hit)
 
+        remote_by_url: dict[str, RemoteImage] = {}
+        error_by_url: dict[str, Exception] = {}
         workers = min(8, len(url_to_hits))
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="media-fetch") as pool:
             future_to_url = {pool.submit(self.image_fetcher.fetch, url): url for url in url_to_hits}
             for future in as_completed(future_to_url):
                 url = future_to_url[future]
                 try:
-                    remote = future.result()
-                    downloaded.extend((hit, remote) for hit in url_to_hits[url])
+                    remote_by_url[url] = future.result()
                 except Exception as exc:
-                    failures.extend(
-                        self._failure(url, "download", exc, hit) for hit in url_to_hits[url]
-                    )
+                    error_by_url[url] = exc
+
+        # Network completion order must not influence vector insertion, tie handling, or
+        # evidence bytes. Re-expand shared URLs in the provider's original media order.
+        downloaded: list[tuple[SearchHit, RemoteImage]] = []
+        failures: list[dict[str, str]] = []
+        for hit in hits:
+            url = hit.preview_url if preview else hit.image_url
+            if url in remote_by_url:
+                downloaded.append((hit, remote_by_url[url]))
+            else:
+                failures.append(self._failure(url, "download", error_by_url[url], hit))
         return downloaded, failures
 
     @staticmethod
@@ -1124,7 +1132,12 @@ class DiscoveryPipeline:
             return {"state": "UNKNOWN", "reason": "geometric transform unavailable"}
         if candidate_box is None:
             return {"state": "UNKNOWN", "reason": "candidate face is absent or unassessable"}
-        matrix = np.asarray(features.homography, dtype="float64").reshape(3, 3)
+        try:
+            matrix = np.asarray(features.homography, dtype="float64").reshape(3, 3)
+        except (TypeError, ValueError):
+            return {"state": "UNKNOWN", "reason": "geometric transform has invalid shape"}
+        if not np.all(np.isfinite(matrix)):
+            return {"state": "UNKNOWN", "reason": "geometric transform is non-finite"}
         box = source_face.box
         corners = np.array(
             [
@@ -1137,7 +1150,7 @@ class DiscoveryPipeline:
         )
         homogeneous = np.column_stack([corners, np.ones(4)])
         projected = homogeneous @ matrix.T
-        if np.any(abs(projected[:, 2]) < 1e-9):
+        if not np.all(np.isfinite(projected)) or np.any(abs(projected[:, 2]) < 1e-9):
             return {"state": "UNKNOWN", "reason": "geometric projection is degenerate"}
         projected = projected[:, :2] / projected[:, 2:]
         x1, y1 = projected.min(axis=0)
@@ -1176,7 +1189,11 @@ class DiscoveryPipeline:
         if match.face_state == AxisState.SUPPORTED:
             claims.append("identity comparison supported at the frozen operating point")
         if match.copy_state == AxisState.SUPPORTED:
-            claims.append("image-copy relationship supported at the frozen operating point")
+            claims.append(
+                "exact downloaded media bytes match an explicit copy-reference SHA-256"
+                if match.exact_image
+                else "image-copy relationship supported at the frozen operating point"
+            )
         if not claims:
             claims.append("no automated face or copy claim accepted")
         if match.decision == "copy_face_conflict_review":

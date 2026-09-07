@@ -52,6 +52,7 @@ class RegionEvidence:
     confidence: float | None
     visibility: Visibility
     reason: str
+    score_interpretation: str = "uncalibrated mean softmax support; not a probability"
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,43 +165,51 @@ class FaceParser:
         except Exception as exc:
             raise FaceInputError("OpenCV could not load the pinned face parser") from exc
         self.output_names = tuple(self.net.getUnconnectedOutLayersNames())
+        if not self.output_names:
+            raise FaceInputError("face parser exposes no output layers")
 
     @staticmethod
     def _crop(image: Any, face: FaceObservation) -> tuple[Any, tuple[int, int, int, int]]:
-        height, width = image.shape[:2]
-        pad_x = round(face.box.width * 0.35)
-        pad_y = round(face.box.height * 0.35)
-        x1 = max(0, face.box.x - pad_x)
-        y1 = max(0, face.box.y - pad_y)
-        x2 = min(width, face.box.x + face.box.width + pad_x)
-        y2 = min(height, face.box.y + face.box.height + pad_y)
+        height, width = _validated_image(image)
+        box_x, box_y, box_width, box_height, _ = _validated_box(face)
+        pad_x = round(box_width * 0.35)
+        pad_y = round(box_height * 0.35)
+        x1 = max(0, box_x - pad_x)
+        y1 = max(0, box_y - pad_y)
+        x2 = min(width, box_x + box_width + pad_x)
+        y2 = min(height, box_y + box_height + pad_y)
         crop = image[y1:y2, x1:x2]
         if crop.size == 0:
             raise FaceInputError("face parser crop is empty")
         return crop, (x1, y1, x2, y2)
 
     def parse(self, image: Any, face: FaceObservation) -> ParsingResult:
-        if len(face.landmarks) != 5:
+        crop, crop_xyxy = self._crop(image, face)
+        landmarks = _valid_landmarks(face, crop_xyxy=crop_xyxy)
+        if landmarks is None:
             return ParsingResult(
                 AnalysisState.UNKNOWN,
-                self._unknown_regions("five YuNet landmarks unavailable"),
-                (face.box.x, face.box.y, face.box.x + face.box.width, face.box.y + face.box.height),
+                self._unknown_regions("five finite YuNet landmarks inside parser crop unavailable"),
+                crop_xyxy,
                 None,
             )
-        crop, crop_xyxy = self._crop(image, face)
-        rgb = self.cv2.cvtColor(crop, self.cv2.COLOR_BGR2RGB)
-        resized = self.cv2.resize(rgb, (512, 512), interpolation=self.cv2.INTER_LINEAR)
-        tensor = resized.astype(np.float32) / 255.0
-        tensor = (tensor - np.array([0.485, 0.456, 0.406], np.float32)) / np.array(
-            [0.229, 0.224, 0.225], np.float32
-        )
-        tensor = np.ascontiguousarray(tensor.transpose(2, 0, 1)[None], dtype=np.float32)
-        self.net.setInput(tensor)
-        outputs = self.net.forward(self.output_names)
-        logits = np.asarray(outputs[0] if isinstance(outputs, tuple | list) else outputs)
+        try:
+            rgb = self.cv2.cvtColor(crop, self.cv2.COLOR_BGR2RGB)
+            resized = self.cv2.resize(rgb, (512, 512), interpolation=self.cv2.INTER_LINEAR)
+            tensor = resized.astype(np.float32) / 255.0
+            tensor = (tensor - np.array([0.485, 0.456, 0.406], np.float32)) / np.array(
+                [0.229, 0.224, 0.225], np.float32
+            )
+            tensor = np.ascontiguousarray(tensor.transpose(2, 0, 1)[None], dtype=np.float32)
+            self.net.setInput(tensor)
+            outputs = self.net.forward(self.output_names)
+            first_output = outputs[0] if isinstance(outputs, tuple | list) and outputs else outputs
+            logits = np.asarray(first_output, dtype=np.float32)
+        except Exception as exc:
+            raise FaceInputError("face parser inference failed") from exc
         if logits.shape != (1, 19, 512, 512) or not np.all(np.isfinite(logits)):
             raise FaceInputError(f"face parser returned invalid output shape {logits.shape}")
-        logits = logits[0]
+        logits = logits[0].copy()
         logits -= logits.max(axis=0, keepdims=True)
         probabilities = np.exp(logits)
         probabilities /= probabilities.sum(axis=0, keepdims=True)
@@ -229,13 +238,43 @@ class FaceParser:
         face: FaceObservation,
         crop_xyxy: tuple[int, int, int, int],
     ) -> dict[str, RegionEvidence]:
+        try:
+            probabilities = np.asarray(probabilities)
+            valid_probabilities = (
+                probabilities.shape == (19, 512, 512)
+                and np.all(np.isfinite(probabilities))
+                and not np.any(probabilities < 0.0)
+                and not np.any(probabilities > 1.0)
+                and np.allclose(probabilities.sum(axis=0), 1.0, rtol=1e-5, atol=1e-6)
+            )
+        except (TypeError, ValueError):
+            valid_probabilities = False
+        if not valid_probabilities:
+            raise FaceInputError("face parser probabilities are malformed")
+        try:
+            crop = np.asarray(crop_xyxy, dtype=np.float64)
+        except (TypeError, ValueError):
+            crop = np.array([], dtype=np.float64)
+        if (
+            crop.shape != (4,)
+            or not np.all(np.isfinite(crop))
+            or not np.all(crop == np.floor(crop))
+            or crop[2] <= crop[0]
+            or crop[3] <= crop[1]
+        ):
+            return FaceParser._unknown_regions("parser crop transform unavailable")
+        landmarks = _valid_landmarks(face, crop_xyxy=crop_xyxy)
+        if landmarks is None:
+            return FaceParser._unknown_regions(
+                "five finite YuNet landmarks inside parser crop unavailable"
+            )
         x1, y1, x2, y2 = crop_xyxy
-        scale_x = 512 / max(1, x2 - x1)
-        scale_y = 512 / max(1, y2 - y1)
+        scale_x = 512 / (x2 - x1)
+        scale_y = 512 / (y2 - y1)
         landmark_groups = {
-            "eyes": (face.landmarks[0], face.landmarks[1]),
-            "nose": (face.landmarks[2],),
-            "mouth": (face.landmarks[3], face.landmarks[4]),
+            "eyes": (landmarks[0], landmarks[1]),
+            "nose": (landmarks[2],),
+            "mouth": (landmarks[3], landmarks[4]),
         }
         # CelebAMask-HQ class 6 is eye-glasses. It is deliberately not accepted as clear
         # eye evidence: the parser cannot distinguish transparent glasses from sunglasses.
@@ -243,44 +282,131 @@ class FaceParser:
         results: dict[str, RegionEvidence] = {}
         yy, xx = np.ogrid[:512, :512]
         radius = max(5.0, min(40.0, face.box.width * scale_x * 0.08))
+        predicted = probabilities.argmax(axis=0)
         for name, points in landmark_groups.items():
-            area = np.zeros((512, 512), dtype=bool)
+            point_support: list[float] = []
+            point_confidence: list[float] = []
             for point_x, point_y in points:
                 center_x = (point_x - x1) * scale_x
                 center_y = (point_y - y1) * scale_y
-                area |= (xx - center_x) ** 2 + (yy - center_y) ** 2 <= radius**2
-            classes = expected_classes[name]
-            predicted = probabilities.argmax(axis=0)
-            support = float(np.isin(predicted[area], classes).mean()) if area.any() else 0.0
-            confidence = (
-                float(probabilities[list(classes)][:, area].sum(axis=0).mean())
-                if area.any()
-                else 0.0
-            )
+                area = (xx - center_x) ** 2 + (yy - center_y) ** 2 <= radius**2
+                classes = expected_classes[name]
+                point_support.append(float(np.isin(predicted[area], classes).mean()))
+                point_confidence.append(
+                    float(probabilities[list(classes)][:, area].sum(axis=0).mean())
+                )
+            # A paired region is only as supported as its weaker landmark. Combining both
+            # disks would allow one visible eye or mouth corner to conceal an unsupported one.
+            support = min(point_support)
+            confidence = min(point_confidence)
             if support >= 0.25 and confidence >= 0.50:
                 visibility = Visibility.VISIBLE
-                reason = "expected parser labels support the landmark region"
+                reason = "expected parser labels support every region landmark"
             else:
                 # The 19-class parser has no universal hand/sticker/object-occluder class.
                 visibility = Visibility.UNKNOWN
-                reason = "insufficient parser support; arbitrary occlusion is not inferable"
+                reason = (
+                    "insufficient uncalibrated parser support; arbitrary occlusion is not "
+                    "inferable"
+                )
             results[name] = RegionEvidence(
                 round(support, 6), round(confidence, 6), visibility, reason
             )
         return results
 
 
+def _validated_image(image: Any) -> tuple[int, int]:
+    try:
+        array = np.asarray(image)
+    except (TypeError, ValueError) as exc:
+        raise FaceInputError("face analysis image is malformed") from exc
+    if array.ndim != 3 or array.shape[2] != 3 or array.size == 0 or array.dtype != np.uint8:
+        raise FaceInputError("face analysis requires a non-empty uint8 BGR image")
+    height, width = array.shape[:2]
+    if height <= 0 or width <= 0:
+        raise FaceInputError("face analysis image dimensions are invalid")
+    return int(height), int(width)
+
+
+def _validated_box(face: FaceObservation) -> tuple[int, int, int, int, float]:
+    try:
+        values = np.asarray(
+            [face.box.x, face.box.y, face.box.width, face.box.height, face.box.confidence],
+            dtype=np.float64,
+        )
+    except (TypeError, ValueError) as exc:
+        raise FaceInputError("face analysis box is malformed") from exc
+    if (
+        not np.all(np.isfinite(values))
+        or not np.all(values[:4] == np.floor(values[:4]))
+        or values[2] <= 0
+        or values[3] <= 0
+    ):
+        raise FaceInputError("face analysis box is malformed")
+    return (
+        int(values[0]),
+        int(values[1]),
+        int(values[2]),
+        int(values[3]),
+        float(values[4]),
+    )
+
+
+def _valid_landmarks(
+    face: FaceObservation,
+    *,
+    image_size: tuple[int, int] | None = None,
+    crop_xyxy: tuple[int, int, int, int] | None = None,
+) -> np.ndarray | None:
+    try:
+        points = np.asarray(face.landmarks, dtype=np.float64)
+    except (TypeError, ValueError):
+        return None
+    if points.shape != (5, 2) or not np.all(np.isfinite(points)):
+        return None
+    if image_size is not None:
+        height, width = image_size
+        if np.any(points[:, 0] < 0) or np.any(points[:, 0] >= width):
+            return None
+        if np.any(points[:, 1] < 0) or np.any(points[:, 1] >= height):
+            return None
+    if crop_xyxy is not None:
+        x1, y1, x2, y2 = crop_xyxy
+        if x2 <= x1 or y2 <= y1:
+            return None
+        if np.any(points[:, 0] < x1) or np.any(points[:, 0] >= x2):
+            return None
+        if np.any(points[:, 1] < y1) or np.any(points[:, 1] >= y2):
+            return None
+    return points
+
+
 def estimate_pose(image_shape: tuple[int, ...], face: FaceObservation, cv2: Any) -> PoseEstimate:
     unknown = PoseEstimate(AnalysisState.UNKNOWN, None, None, None, "UNKNOWN", None)
-    if len(face.landmarks) != 5:
+    try:
+        if len(image_shape) < 2:
+            return unknown
+        dimensions = np.asarray(image_shape[:2], dtype=np.float64)
+    except (TypeError, ValueError):
         return unknown
-    image_points = np.asarray(face.landmarks, dtype=np.float64)
-    if image_points.shape != (5, 2) or not np.all(np.isfinite(image_points)):
+    if (
+        not np.all(np.isfinite(dimensions))
+        or not np.all(dimensions == np.floor(dimensions))
+        or np.any(dimensions <= 0)
+    ):
+        return unknown
+    height, width = (int(value) for value in dimensions)
+    image_points = _valid_landmarks(face, image_size=(int(height), int(width)))
+    if image_points is None:
         return unknown
     interocular = float(np.linalg.norm(image_points[0] - image_points[1]))
-    if interocular < 5.0 or len(np.unique(image_points, axis=0)) < 4:
+    centered = image_points - image_points.mean(axis=0)
+    if (
+        interocular < 5.0
+        or len(np.unique(image_points, axis=0)) < 4
+        or np.linalg.matrix_rank(centered) < 2
+    ):
         return unknown
-    height, width = image_shape[:2]
     focal = float(max(width, height))
     camera = np.array(
         [[focal, 0.0, width / 2], [0.0, focal, height / 2], [0.0, 0.0, 1.0]],
@@ -296,7 +422,28 @@ def estimate_pose(image_shape: tuple[int, ...], face: FaceObservation, cv2: Any)
         )
         if not ok:
             return unknown
+        rotation_vector = np.asarray(rotation_vector, dtype=np.float64)
+        translation_vector = np.asarray(translation_vector, dtype=np.float64)
+        if (
+            rotation_vector.size != 3
+            or translation_vector.size != 3
+            or not np.all(np.isfinite(rotation_vector))
+            or not np.all(np.isfinite(translation_vector))
+        ):
+            return unknown
+        rotation_vector = rotation_vector.reshape(3, 1)
+        translation_vector = translation_vector.reshape(3, 1)
         rotation, _ = cv2.Rodrigues(rotation_vector)
+        rotation = np.asarray(rotation, dtype=np.float64)
+        if rotation.shape != (3, 3) or not np.all(np.isfinite(rotation)):
+            return unknown
+        if not np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-6):
+            return unknown
+        if not np.isclose(np.linalg.det(rotation), 1.0, atol=1e-6):
+            return unknown
+        camera_points = (rotation @ POSE_TEMPLATE.T + translation_vector).T
+        if not np.all(np.isfinite(camera_points)) or np.any(camera_points[:, 2] <= 0.0):
+            return unknown
         angles = cv2.RQDecomp3x3(rotation)[0]
         projected, _ = cv2.projectPoints(
             POSE_TEMPLATE,
@@ -306,6 +453,10 @@ def estimate_pose(image_shape: tuple[int, ...], face: FaceObservation, cv2: Any)
             np.zeros((4, 1), dtype=np.float64),
         )
     except Exception:
+        return unknown
+    angles = np.asarray(angles, dtype=np.float64)
+    projected = np.asarray(projected, dtype=np.float64)
+    if angles.shape != (3,) or projected.size != 10 or not np.all(np.isfinite(projected)):
         return unknown
     pitch, yaw, roll = (float(value) for value in angles)
     residual = float(
@@ -348,11 +499,12 @@ class FaceQualityAssessor:
         self.visibility_policy_validated = visibility_policy_validated
 
     def assess(self, image: Any, face: FaceObservation) -> FaceQuality:
-        height, width = image.shape[:2]
-        x1 = max(0, face.box.x)
-        y1 = max(0, face.box.y)
-        x2 = min(width, face.box.x + face.box.width)
-        y2 = min(height, face.box.y + face.box.height)
+        height, width = _validated_image(image)
+        box_x, box_y, box_width, box_height, detector_confidence = _validated_box(face)
+        x1 = max(0, box_x)
+        y1 = max(0, box_y)
+        x2 = min(width, box_x + box_width)
+        y2 = min(height, box_y + box_height)
         crop = image[y1:y2, x1:x2]
         if crop.size == 0:
             raise FaceInputError("quality crop is empty")
@@ -362,9 +514,13 @@ class FaceQualityAssessor:
         luminance = float(gray.mean())
         dark_clip = float((gray <= 5).mean())
         bright_clip = float((gray >= 250).mean())
+        raw_metrics = np.asarray([blur, luminance, dark_clip, bright_clip], dtype=np.float64)
+        if not np.all(np.isfinite(raw_metrics)):
+            raise FaceInputError("quality feature extraction returned non-finite evidence")
+        landmarks = _valid_landmarks(face, image_size=(height, width))
         interocular = (
-            float(np.linalg.norm(np.asarray(face.landmarks[0]) - face.landmarks[1]))
-            if len(face.landmarks) == 5
+            float(np.linalg.norm(landmarks[0] - landmarks[1]))
+            if landmarks is not None
             else None
         )
         pose = estimate_pose(image.shape, face, self.cv2)
@@ -373,13 +529,21 @@ class FaceQualityAssessor:
         if self.parser is not None:
             try:
                 parsing = self.parser.parse(image, face)
-            except FaceInputError:
+            except Exception:
                 parser_error = True
+                parsing = ParsingResult(
+                    AnalysisState.UNKNOWN,
+                    FaceParser._unknown_regions("face parser inference failed"),
+                    (x1, y1, x2, y2),
+                    None,
+                )
 
+        visible_width = x2 - x1
+        visible_height = y2 - y1
         components: dict[str, float | None] = {
-            "native_resolution": min(1.0, min(face.box.width, face.box.height) / 120.0),
+            "native_resolution": min(1.0, min(visible_width, visible_height) / 120.0),
             "interocular_resolution": min(1.0, interocular / 45.0) if interocular else None,
-            "detector": max(0.0, min(1.0, (face.box.confidence - 0.5) / 0.5)),
+            "detector": max(0.0, min(1.0, (detector_confidence - 0.5) / 0.5)),
             "blur": min(1.0, blur / 100.0),
             "exposure": max(
                 0.0,
@@ -417,9 +581,9 @@ class FaceQualityAssessor:
             state,
             quality_score,
             tuple(reasons),
-            min(face.box.width, face.box.height),
+            min(visible_width, visible_height),
             round(interocular, 3) if interocular is not None else None,
-            round(face.box.confidence, 6),
+            round(detector_confidence, 6),
             round(blur, 6),
             round(luminance, 6),
             round(dark_clip, 6),

@@ -72,6 +72,32 @@ def test_manifest_rejects_exact_hash_leakage(tmp_path: Path) -> None:
         load_manifest(path, verify_files=False)
 
 
+def test_manifest_rejects_ambiguous_media_and_annotation_identity(tmp_path: Path) -> None:
+    path = tmp_path / "dataset.jsonl"
+    first = _record("one", "a" * 64, participant="p1")
+    second = _record("two", "b" * 64, participant="p2")
+    second["media_id"] = first["media_id"]
+    _write(path, [first, second])
+    with pytest.raises(FaceInputError, match="candidate media_id"):
+        load_manifest(path, verify_files=False)
+
+    second["media_id"] = "two"
+    second["face_annotations"][0]["participant_id"] = "undeclared"
+    _write(path, [first, second])
+    with pytest.raises(FaceInputError, match="annotation participant"):
+        load_manifest(path, verify_files=False)
+
+
+def test_manifest_copy_lineage_must_preserve_roles_and_family(tmp_path: Path) -> None:
+    path = tmp_path / "dataset.jsonl"
+    parent = _record("source", "a" * 64, role="copy_reference", family="original")
+    child = _record("copy", "b" * 64, role="candidate_copy", family="different")
+    child["copy_parent_image_id"] = "source"
+    _write(path, [parent, child])
+    with pytest.raises(FaceInputError, match="copy lineage changes source family"):
+        load_manifest(path, verify_files=False)
+
+
 def test_manifest_verifies_files_and_authorizes_matching_media(tmp_path: Path) -> None:
     image = tmp_path / "candidate.jpg"
     image.write_bytes(b"candidate")

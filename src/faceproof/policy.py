@@ -239,6 +239,16 @@ def freeze_policy(
         or test.get("split") != "test"
     ):
         raise FaceInputError("the supplied test artifact is not a locked-test report")
+    calibration_sha256 = hashlib.sha256(calibration_bytes).hexdigest()
+    if test is not None:
+        test_policy = test.get("policy") or {}
+        if (
+            test_policy.get("policy_id") != calibration.get("policy_id")
+            or test_policy.get("calibration_report_sha256") != calibration_sha256
+        ):
+            raise FaceInputError(
+                "locked-test report was not produced by this frozen calibration decision"
+            )
     thresholds = calibration.get("thresholds") or {}
     face_accept = _optional_float(thresholds.get("face_accept"))
     copy_accept = _optional_float(thresholds.get("copy_accept"))
@@ -267,7 +277,7 @@ def freeze_policy(
         "targets": calibration.get("targets") or {},
         "artifacts": {
             "model_lock_sha256": hashlib.sha256(model_lock.read_bytes()).hexdigest(),
-            "calibration_report_sha256": hashlib.sha256(calibration_bytes).hexdigest(),
+            "calibration_report_sha256": calibration_sha256,
             "test_report_sha256": (
                 hashlib.sha256(test_bytes).hexdigest() if test_bytes is not None else None
             ),

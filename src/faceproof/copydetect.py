@@ -127,12 +127,16 @@ class SSCDDescriptorEngine:
             1, 3, 1, 1
         )
 
-    def _tensor(self, image: Any) -> Any:
-        if image is None or getattr(image, "size", 0) == 0:
-            raise FaceInputError("cannot compute SSCD descriptor for an empty image")
-        resized = self.cv2.resize(image, (320, 320), interpolation=self.cv2.INTER_LINEAR)
-        rgb = self.cv2.cvtColor(resized, self.cv2.COLOR_BGR2RGB)
-        tensor = self.torch.from_numpy(np.ascontiguousarray(rgb)).permute(2, 0, 1)
+    def _batch_tensor(self, images: list[Any]) -> Any:
+        """Apply the pinned recipe and transfer one contiguous batch to the device."""
+        rgb_batch = np.empty((len(images), 320, 320, 3), dtype=np.uint8)
+        for index, image in enumerate(images):
+            resized = self.cv2.resize(image, (320, 320), interpolation=self.cv2.INTER_LINEAR)
+            self.cv2.cvtColor(resized, self.cv2.COLOR_BGR2RGB, dst=rgb_batch[index])
+        # Preserve the model's established contiguous NCHW execution layout. Keeping
+        # this as uint8 until after the single batch copy avoids the old per-image
+        # float tensors without changing convolution accumulation order.
+        tensor = self.torch.from_numpy(rgb_batch).permute(0, 3, 1, 2).contiguous()
         return tensor.to(device=self.device, dtype=self.torch.float32).div_(255.0)
 
     def encode(self, image: Any) -> np.ndarray:
@@ -141,13 +145,13 @@ class SSCDDescriptorEngine:
     def encode_many(self, images: list[Any]) -> list[np.ndarray]:
         if not images:
             return []
+        if any(image is None or getattr(image, "size", 0) == 0 for image in images):
+            raise FaceInputError("cannot compute SSCD descriptor for an empty image")
         descriptors: list[np.ndarray] = []
         with self.torch.inference_mode():
             for start in range(0, len(images), self.batch_size):
-                batch = self.torch.stack(
-                    [self._tensor(image) for image in images[start : start + self.batch_size]]
-                )
-                batch = (batch - self._mean) / self._std
+                batch = self._batch_tensor(images[start : start + self.batch_size])
+                batch.sub_(self._mean).div_(self._std)
                 output = self.model(batch).reshape(batch.shape[0], -1)
                 output = self.torch.nn.functional.normalize(output, p=2, dim=1)
                 if output.shape[1] != self.dimensions:

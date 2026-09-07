@@ -66,16 +66,24 @@ class DatasetManifest:
         return record
 
     def face_record_for_hit(self, hit: SearchHit) -> ManifestRecord | None:
-        matches = [
+        media_matches = [
             record
             for record in self.records
             if "candidate_face" in record.roles
-            and (
-                ((record.media_id or record.image_id) == hit.media_id)
-                or (record.canonical_uri and record.canonical_uri == hit.canonical_uri)
-            )
+            and (record.media_id or record.image_id) == hit.media_id
         ]
-        return matches[0] if matches and matches[0].face_eligible else None
+        if media_matches:
+            return media_matches[0] if media_matches[0].face_eligible else None
+        uri_matches = [
+            record
+            for record in self.records
+            if "candidate_face" in record.roles
+            and record.canonical_uri
+            and record.canonical_uri == hit.canonical_uri
+        ]
+        # A post URI may legitimately contain multiple attachments.  It is not a safe
+        # permission key unless it identifies exactly one manifest record.
+        return uri_matches[0] if len(uri_matches) == 1 and uri_matches[0].face_eligible else None
 
 
 def _required_text(raw: dict[str, Any], name: str, line: int) -> str:
@@ -130,6 +138,10 @@ def load_manifest(path: Path, *, verify_files: bool = True) -> DatasetManifest:
             not isinstance(item, str) or not item for item in participants
         ):
             raise FaceInputError(f"manifest line {line_number}: invalid participant_ids")
+        if len(participants) != len(set(participants)):
+            raise FaceInputError(
+                f"manifest line {line_number}: duplicate participant_ids are not allowed"
+            )
         annotations = raw.get("face_annotations", [])
         if not isinstance(annotations, list) or any(
             not isinstance(item, dict) for item in annotations
@@ -148,11 +160,27 @@ def load_manifest(path: Path, *, verify_files: bool = True) -> DatasetManifest:
                     f"manifest line {line_number}: biometric records need participant_ids"
                 )
             for annotation in annotations:
-                if not annotation.get("participant_id") or not annotation.get("consent_ref"):
+                annotation_participant = annotation.get("participant_id")
+                annotation_consent = annotation.get("consent_ref")
+                if not annotation_participant or not annotation_consent:
                     raise BlockedState(
                         "BLOCKED_PERMISSION_MANIFEST",
                         f"{image_id} face annotations need participant_id and consent_ref",
                     )
+                if annotation_participant not in participants:
+                    raise FaceInputError(
+                        f"manifest line {line_number}: annotation participant is not "
+                        "declared in participant_ids"
+                    )
+            face_indices = [annotation.get("face_index") for annotation in annotations]
+            if any(
+                not isinstance(index, int) or isinstance(index, bool) or index < 0
+                for index in face_indices
+            ) or len(face_indices) != len(set(face_indices)):
+                raise FaceInputError(
+                    f"manifest line {line_number}: face_index values must be unique "
+                    "non-negative integers"
+                )
         labels = raw.get("labels", {})
         if not isinstance(labels, dict):
             raise FaceInputError(f"manifest line {line_number}: labels must be an object")
@@ -196,11 +224,20 @@ def _validate_no_leakage(records: list[ManifestRecord]) -> None:
     family_splits: dict[str, set[str]] = {}
     hash_splits: dict[str, set[str]] = {}
     by_id = {record.image_id: record for record in records}
+    candidate_media_ids: dict[str, str] = {}
     for record in records:
         for participant in record.participant_ids:
             participant_splits.setdefault(participant, set()).add(record.split)
         family_splits.setdefault(record.source_image_family_id, set()).add(record.split)
         hash_splits.setdefault(record.sha256, set()).add(record.split)
+        if record.roles & {"candidate_face", "candidate_copy"}:
+            media_id = record.media_id or record.image_id
+            previous = candidate_media_ids.setdefault(media_id, record.image_id)
+            if previous != record.image_id:
+                raise FaceInputError(
+                    f"candidate media_id {media_id} is shared by {previous} and "
+                    f"{record.image_id}"
+                )
         if record.copy_parent_image_id:
             parent = by_id.get(record.copy_parent_image_id)
             if parent is None:
@@ -210,6 +247,15 @@ def _validate_no_leakage(records: list[ManifestRecord]) -> None:
             if parent.split != record.split:
                 raise FaceInputError(
                     f"copy lineage crosses splits: {parent.image_id} -> {record.image_id}"
+                )
+            if "candidate_copy" not in record.roles or "copy_reference" not in parent.roles:
+                raise FaceInputError(
+                    f"copy lineage roles are invalid: {parent.image_id} -> {record.image_id}"
+                )
+            if parent.source_image_family_id != record.source_image_family_id:
+                raise FaceInputError(
+                    f"copy lineage changes source family: {parent.image_id} -> "
+                    f"{record.image_id}"
                 )
     leaked_participants = sorted(
         key for key, splits in participant_splits.items() if len(splits) > 1
